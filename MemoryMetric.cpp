@@ -315,12 +315,12 @@ void MemoryMetric::GetCmaMemoryUsage()
 {
     LOG_INFO("Getting CMA memory usage");
 
-    int countKb = 0;
-    int usedKb = 0;
-    int unusedKb = 0;
+    long double countKb = 0;
+    long double usedKb = 0;
+    long double unusedKb = 0;
 
-    int cmaTotalKb = 0;
-    int cmaTotalUsed = 0;
+    long double cmaTotalKb = 0;
+    long double cmaTotalUsed = 0;
 
     // Start by getting CMA breakdown
     try {
@@ -373,7 +373,7 @@ void MemoryMetric::GetCmaMemoryUsage()
             return;
         }
 
-        int totalUnused = cmaTotalKb - cmaTotalUsed;
+        long double totalUnused = cmaTotalKb - cmaTotalUsed;
         int cmaFree = 0;
         std::string line;
         while (std::getline(meminfo, line)) {
@@ -382,7 +382,7 @@ void MemoryMetric::GetCmaMemoryUsage()
             }
         }
 
-        int borrowed = totalUnused - cmaFree;
+        long double borrowed = totalUnused - cmaFree;
         mCmaBorrowed.AddDataPoint(borrowed);
     } catch (std::filesystem::filesystem_error &error) {
         LOG_WARN("Failed to open CMA debug with error %s", error.what());

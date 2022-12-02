@@ -58,7 +58,7 @@ int pm_kernel_create(pm_kernel_t **ker_out) {
     return 0;
 }
 
-#define INIT_PIDS 20
+#define INIT_PIDS 100
 int pm_kernel_pids(pm_kernel_t *ker, pid_t **pids_out, size_t *len) {
     DIR *proc;
     struct dirent *dir;

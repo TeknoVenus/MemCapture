@@ -11,17 +11,42 @@
 
 #include "Utils.h"
 
-MemoryMetric::MemoryMetric()
+MemoryMetric::MemoryMetric(Platform platform)
         : mQuit(false),
           mCv(),
           mLinuxMemoryMeasurements{},
           mCmaFree("CmaFree"),
           mCmaBorrowed("CmaBorrowedKernel"),
           mMemoryBandwidth({0, 0, 0, 0}),
-          mMemoryFragmentation{}
+          mMemoryFragmentation{},
+          mPlatform(platform)
 {
 
     mPageSize = sysconf(_SC_PAGESIZE);
+
+    if (platform == Platform::AMLOGIC) {
+        mCmaNames = {
+                std::make_pair("cma-0", "secmon_reserved"),
+                std::make_pair("cma-1", "logo_reserved"),
+                std::make_pair("cma-2", "codec_mm_cma"),
+                std::make_pair("cma-3", "ion_cma_reserved"),
+                std::make_pair("cma-4", "vdin1_cma_reserved"),
+                std::make_pair("cma-5", "demod_cma_reserved"),
+                std::make_pair("cma-6", "kernel_reserved")
+        };
+    } else if (platform == Platform::REALTEK) {
+        mCmaNames = {
+                std::make_pair("cma-0", "cma-0"),
+                std::make_pair("cma-1", "cma-1"),
+                std::make_pair("cma-2", "cma-2"),
+                std::make_pair("cma-3", "cma-3"),
+                std::make_pair("cma-4", "cma-4"),
+                std::make_pair("cma-5", "cma-5"),
+                std::make_pair("cma-6", "cma-6"),
+                std::make_pair("cma-7", "cma-7"),
+                std::make_pair("cma-8", "cma-8"),
+        };
+    }
 
     // Create static measurements - store in KB
     Measurement total("Total");
@@ -52,9 +77,15 @@ MemoryMetric::MemoryMetric()
     mLinuxMemoryMeasurements.insert(
             std::make_pair(slabUnreclaimable.GetName(), slabUnreclaimable));
 
-    // Enable memory bandwidth monitoring
-    std::ofstream ddrMode("/sys/class/aml_ddr/mode", std::ios::binary);
-    ddrMode << "1";
+    if (platform == Platform::AMLOGIC) {
+        mMemoryBandwidthSupported = true;
+        // Enable memory bandwidth monitoring
+        std::ofstream ddrMode("/sys/class/aml_ddr/mode", std::ios::binary);
+        ddrMode << "1";
+    } else if (platform == Platform::REALTEK) {
+        mMemoryBandwidthSupported = false;
+    }
+
 }
 
 MemoryMetric::~MemoryMetric()
@@ -212,15 +243,20 @@ void MemoryMetric::PrintResults()
 
     printf("\n======== Memory Bandwidth ===========\n");
 
-    memoryBandwidth.add_row(
-            {"", "Bandwidth_KB/s", "Usage_%"});
+    if (mMemoryBandwidthSupported) {
+        memoryBandwidth.add_row(
+                {"", "Bandwidth_KB/s", "Usage_%"});
 
-    memoryBandwidth.add_row(
-            {"Max", std::to_string(mMemoryBandwidth.maxKBps), std::to_string(mMemoryBandwidth.maxUsagePercent)});
-    memoryBandwidth.add_row({"Average", std::to_string(mMemoryBandwidth.averageKBps),
-                             std::to_string(mMemoryBandwidth.averageUsagePercent)});
+        memoryBandwidth.add_row(
+                {"Max", std::to_string(mMemoryBandwidth.maxKBps), std::to_string(mMemoryBandwidth.maxUsagePercent)});
+        memoryBandwidth.add_row({"Average", std::to_string(mMemoryBandwidth.averageKBps),
+                                 std::to_string(mMemoryBandwidth.averageUsagePercent)});
 
-    Utils::PrintTable(memoryBandwidth);
+        Utils::PrintTable(memoryBandwidth);
+    } else {
+        printf("Not supported\n");
+    }
+
 
     for (const auto &memoryZone: mMemoryFragmentation) {
         tabulate::Table memoryFragmentation;
@@ -342,7 +378,15 @@ void MemoryMetric::GetCmaMemoryUsage()
             cmaTotalKb += countKb;
             cmaTotalUsed += usedKb;
 
-            const auto cmaName = mCmaNames.at(dirEntry.path().filename());
+            std::string cmaName;
+            try {
+                cmaName = mCmaNames.at(dirEntry.path().filename());
+            }
+            catch (const std::exception &ex) {
+                LOG_ERROR("Could not find CMA name for directory %s", dirEntry.path().filename().string().c_str());
+                break;
+            }
+
 
             // Add to measurements
             auto itr = mCmaMeasurements.find(cmaName);
@@ -403,26 +447,75 @@ void MemoryMetric::GetGpuMemoryUsage()
     std::string line;
     long gpuPages;
     pid_t pid;
-    while (std::getline(gpuMem, line)) {
-        if (sscanf(line.c_str(), "%*x %d %ld", &pid, &gpuPages) != 0) {
-            unsigned long gpuBytes = gpuPages * mPageSize;
 
-            auto itr = mGpuMemoryUsage.find(pid);
+    if (mPlatform == Platform::AMLOGIC) {
+        // Amlogic example
+        /* root@sky-llama-panel:~# cat /sys/kernel/debug/mali0/gpu_memory
+            mali0            total used_pages      25939
+            ----------------------------------------------------
+            kctx             pid              used_pages
+            ----------------------------------------------------
+            f1dbf000      14880       4558
+            f1c19000      14438        135
+            f1bb1000      14292      16359
+            f18c0000      10899       4887
+         */
+        while (std::getline(gpuMem, line)) {
+            if (sscanf(line.c_str(), "%*x %d %ld", &pid, &gpuPages) != 0) {
+                unsigned long gpuBytes = gpuPages * mPageSize;
 
-            if (itr != mGpuMemoryUsage.end()) {
-                // Already got a measurement for this PID
-                auto &measurement = itr->second;
-                measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
-            } else {
-                std::string processName;
-                Procrank::GetProcessName(pid, processName);
+                auto itr = mGpuMemoryUsage.find(pid);
 
-                Measurement measurement(processName);
-                measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
-                mGpuMemoryUsage.insert(std::make_pair(pid, measurement));
+                if (itr != mGpuMemoryUsage.end()) {
+                    // Already got a measurement for this PID
+                    auto &measurement = itr->second;
+                    measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
+                } else {
+                    std::string processName;
+                    Procrank::GetProcessName(pid, processName);
+
+                    Measurement measurement(processName);
+                    measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
+                    mGpuMemoryUsage.insert(std::make_pair(pid, measurement));
+                }
+            }
+        }
+    } else if (mPlatform == Platform::REALTEK) {
+        // Realtek example
+        // First column = pages, second column = PID
+        /* root@skyxione:/sys/kernel/debug/mali0# cat gpu_memory
+        mali0                  45605
+          kctx-0xfa847000      14102      15898
+          kctx-0xf7953000         42      15833
+          kctx-0xff0b0000       3316       9134
+          kctx-0xfec18000      20929       8344
+          kctx-0xfb9df000        135       6235
+          kctx-0xfb12e000       7081       4962
+        */
+        while (std::getline(gpuMem, line)) {
+            if (sscanf(line.c_str(), "  kctx-0x%*x %ld %d", &gpuPages, &pid) != 0) {
+                LOG_INFO("Match on line %s", line.c_str());
+                unsigned long gpuBytes = gpuPages * mPageSize;
+
+                auto itr = mGpuMemoryUsage.find(pid);
+
+                if (itr != mGpuMemoryUsage.end()) {
+                    // Already got a measurement for this PID
+                    auto &measurement = itr->second;
+                    measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
+                } else {
+                    std::string processName;
+                    Procrank::GetProcessName(pid, processName);
+
+                    Measurement measurement(processName);
+                    measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
+                    mGpuMemoryUsage.insert(std::make_pair(pid, measurement));
+                }
             }
         }
     }
+
+
 }
 
 void MemoryMetric::GetContainerMemoryUsage()
@@ -459,30 +552,40 @@ void MemoryMetric::GetMemoryBandwidth()
 {
     LOG_INFO("Getting memory bandwidth usage");
 
-    std::ifstream memBandwidthFile("/sys/class/aml_ddr/usage_stat");
-    //std::ifstream memBandwidthFile("/home/stephen.foulds/Documents/tmp/ddr");
+    if (mMemoryBandwidthSupported) {
+        if (mPlatform == Platform::AMLOGIC) {
+            std::ifstream memBandwidthFile("/sys/class/aml_ddr/usage_stat");
 
-    if (!memBandwidthFile) {
-        LOG_WARN("Cannot get DDR usage");
+            if (!memBandwidthFile) {
+                LOG_WARN("Cannot get DDR usage");
+                return;
+            }
+
+            std::string line;
+            long kbps = 0;
+            double percent = 0;
+
+            // Know the data we need is in the first two lines, save effort by only reading those lines
+            int i = 0;
+            while (std::getline(memBandwidthFile, line) && i < 2) {
+                if (sscanf(line.c_str(), "MAX bandwidth:  %ld KB/s, usage: %lf%%, tick:%*d us", &kbps, &percent) != 0) {
+                    mMemoryBandwidth.maxKBps = kbps;
+                    mMemoryBandwidth.maxUsagePercent = percent;
+                } else if (
+                        sscanf(line.c_str(), "AVG bandwidth:  %ld KB/s, usage: %lf%%, samples:%*d", &kbps, &percent) !=
+                        0) {
+                    mMemoryBandwidth.averageKBps = kbps;
+                    mMemoryBandwidth.averageUsagePercent = percent;
+                }
+                i++;
+            }
+        }
+    } else {
+        // DDR bandwidth not supported
         return;
     }
 
-    std::string line;
-    long kbps = 0;
-    double percent = 0;
 
-    // Know the data we need is in the first two lines, save effort by only reading those lines
-    int i = 0;
-    while (std::getline(memBandwidthFile, line) && i < 2) {
-        if (sscanf(line.c_str(), "MAX bandwidth:  %ld KB/s, usage: %lf%%, tick:%*d us", &kbps, &percent) != 0) {
-            mMemoryBandwidth.maxKBps = kbps;
-            mMemoryBandwidth.maxUsagePercent = percent;
-        } else if (sscanf(line.c_str(), "AVG bandwidth:  %ld KB/s, usage: %lf%%, samples:%*d", &kbps, &percent) != 0) {
-            mMemoryBandwidth.averageKBps = kbps;
-            mMemoryBandwidth.averageUsagePercent = percent;
-        }
-        i++;
-    }
 }
 
 void MemoryMetric::CalculateFragmentation()
@@ -513,26 +616,35 @@ void MemoryMetric::CalculateFragmentation()
         std::map<int, int> freePages;
         std::map<int, double> fragmentationPercent;
 
-        if (segments.size() != 15) {
-            LOG_WARN("Failed to parse buddyinfo - invalid number of columns");
+        size_t columnCount = 0;
+        if (mPlatform == Platform::AMLOGIC) {
+            columnCount = 15;
+        } else if (mPlatform == Platform::REALTEK) {
+            columnCount = 17;
+        }
+
+        if (segments.size() != columnCount) {
+            LOG_WARN("Failed to parse buddyinfo - invalid number of columns (got %zd, expected %zd)", segments.size(), columnCount);
         } else {
             // Calculate fragmentation % for this node
             int totalFreePages = 0;
 
             //  Get all free page values, and work out total free pages
-            for (int i = 0; i <= 10; i++) {
-                int freeCount = std::stoi(segments[4 + i]);
-                totalFreePages += std::pow(2, i) * freeCount;
-                freePages[i] = freeCount;
+            for (int i = 4; i < (int) columnCount; i++) {
+                int order = i - 4;
+
+                int freeCount = std::stoi(segments[i]);
+                totalFreePages += std::pow(2, order) * freeCount;
+                freePages[order] = freeCount;
             }
 
             // Now find out the fragmentation percentages (see https://www.stb.bskyb.com/confluence/display/2016/Memory+Fragmentation)
             double fragPercentage;
-            for (int i = 0; i <= 10; i++) {
+            for (int i = 0; i < (int) freePages.size(); i++) {
                 fragPercentage = 0;
 
                 // Seems inefficient...
-                for (int j = i; j <= 10; j++) {
+                for (int j = i; j < (int) freePages.size(); j++) {
                     fragPercentage += (std::pow(2, j)) * freePages[j];
                 }
                 fragPercentage = (totalFreePages - fragPercentage) / totalFreePages;
@@ -544,13 +656,13 @@ void MemoryMetric::CalculateFragmentation()
             if (itr != mMemoryFragmentation.end()) {
                 auto &measurements = itr->second;
 
-                for (int i = 0; i <= 10; i++) {
+                for (int i = 0; i < (int) freePages.size(); i++) {
                     measurements[i].FreePages.AddDataPoint(freePages[i]);
                     measurements[i].Fragmentation.AddDataPoint(fragmentationPercent[i]);
                 }
             } else {
                 std::vector<memoryFragmentation> measurements = {};
-                for (int i = 0; i <= 10; i++) {
+                for (int i = 0; i < (int) freePages.size(); i++) {
                     Measurement fp("FreePages");
                     fp.AddDataPoint(freePages[i]);
 

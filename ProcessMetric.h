@@ -51,12 +51,12 @@ private:
 
     struct Result
     {
-        explicit Result(pid_t _pid, std::string  _name, Measurement  pss, Measurement  rss, Measurement  uss)
-            :pid(_pid),
-            Name(std::move(_name)),
-            Pss(std::move(pss)),
-            Rss(std::move(rss)),
-            Uss(std::move(uss))
+        explicit Result(pid_t _pid, std::string _name, Measurement pss, Measurement rss, Measurement uss)
+                : pid(_pid),
+                  Name(std::move(_name)),
+                  Pss(std::move(pss)),
+                  Rss(std::move(rss)),
+                  Uss(std::move(uss))
         {
 
         }

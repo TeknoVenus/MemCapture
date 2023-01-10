@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <map>
 #include <mutex>
+#include "Platform.h"
 
 #include "Procrank.h"
 
@@ -17,7 +18,7 @@
 class MemoryMetric : public IMetric
 {
 public:
-    MemoryMetric();
+    MemoryMetric(Platform platform);
 
     ~MemoryMetric();
 
@@ -94,19 +95,14 @@ private:
     Measurement mCmaBorrowed;
 
     memoryBandwidth mMemoryBandwidth;
+    bool mMemoryBandwidthSupported;
 
     // Position in vector reflects order
     std::map<std::string, std::vector<memoryFragmentation>> mMemoryFragmentation;
 
-    const std::map<std::string, std::string> mCmaNames{
-            std::make_pair("cma-0", "secmon_reserved"),
-            std::make_pair("cma-1", "logo_reserved"),
-            std::make_pair("cma-2", "codec_mm_cma"),
-            std::make_pair("cma-3", "ion_cma_reserved"),
-            std::make_pair("cma-4", "vdin1_cma_reserved"),
-            std::make_pair("cma-5", "demod_cma_reserved"),
-            std::make_pair("cma-6", "kernel_reserved")
-    };
+    Platform mPlatform;
+
+    std::map<std::string, std::string> mCmaNames;
 
     void CalculateFragmentation();
 };

@@ -1,12 +1,14 @@
 #include <unistd.h>
 #include <getopt.h>
 
+#include "Platform.h"
 #include "Log.h"
 #include "ProcessMetric.h"
 #include "MemoryMetric.h"
 #include "PerformanceMetric.h"
 
 static int gDuration = 30;
+static Platform gPlatform = Platform::AMLOGIC;
 
 static void displayUsage()
 {
@@ -14,6 +16,7 @@ static void displayUsage()
     printf("    Utility to capture memory statistics\n\n");
     printf("    -h, --help          Print this help and exit\n");
     printf("    -d, --duration      Amount of time (in seconds) to capture data for. Default 30 seconds\n");
+    printf("    -p, --platform      Platform we're running on. Supported options = ['AMLOGIC', 'REALTEK']. Defaults to Amlogic\n");
 }
 
 static void parseArgs(const int argc, char **argv)
@@ -21,6 +24,7 @@ static void parseArgs(const int argc, char **argv)
     struct option longopts[] = {
             {"help",     no_argument,       nullptr, (int) 'h'},
             {"duration", required_argument, nullptr, (int) 'd'},
+            {"platform", required_argument, nullptr, (int) 'p'},
             {nullptr, 0,                    nullptr, 0}
     };
 
@@ -29,7 +33,7 @@ static void parseArgs(const int argc, char **argv)
     int option;
     int longindex;
 
-    while ((option = getopt_long(argc, argv, "hd:", longopts, &longindex)) != -1) {
+    while ((option = getopt_long(argc, argv, "hd:p:", longopts, &longindex)) != -1) {
         switch (option) {
             case 'h':
                 displayUsage();
@@ -42,6 +46,19 @@ static void parseArgs(const int argc, char **argv)
                     exit(EXIT_FAILURE);
                 }
                 break;
+            case 'p': {
+                std::string platform(optarg);
+
+                if (platform == "AMLOGIC") {
+                    gPlatform = Platform::AMLOGIC;
+                } else if (platform == "REALTEK") {
+                    gPlatform = Platform::REALTEK;
+                } else {
+                    fprintf(stderr, "Warning: Unsupported platform %s\n", platform.c_str());
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            }
             case '?':
                 if (optopt == 'c')
                     fprintf(stderr, "Warning: Option -%c requires an argument.\n", optopt);
@@ -60,7 +77,7 @@ static void parseArgs(const int argc, char **argv)
 }
 
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
     parseArgs(argc, argv);
 
@@ -72,28 +89,37 @@ int main(int argc, char* argv[])
     LOG_INFO("** About to start memory capture for %d seconds **", gDuration);
 
     ProcessMetric processMetric;
-    MemoryMetric memoryMetric;
+    MemoryMetric memoryMetric(gPlatform);
     PerformanceMetric performanceMetric;
 
     // Start data collection
     // Capture procrank output less often to reduce CPU load
     processMetric.StartCollection(std::chrono::seconds(5));
     memoryMetric.StartCollection(std::chrono::seconds(3));
-    performanceMetric.StartCollection(std::chrono::seconds(3));
+
+    if (gPlatform == Platform::AMLOGIC) {
+        performanceMetric.StartCollection(std::chrono::seconds(3));
+    }
 
     std::this_thread::sleep_for(std::chrono::seconds(gDuration));
 
     // Stop data collection
     processMetric.StopCollection();
     memoryMetric.StopCollection();
-    performanceMetric.StopCollection();
+
+    if (gPlatform == Platform::AMLOGIC) {
+        performanceMetric.StopCollection();
+    }
 
     // Print results to stdout
     processMetric.PrintResults();
     printf("\n");
     memoryMetric.PrintResults();
-    printf("\n");
-    performanceMetric.PrintResults();
+
+    if (gPlatform == Platform::AMLOGIC) {
+        printf("\n");
+        performanceMetric.PrintResults();
+    }
 
     return 0;
 }

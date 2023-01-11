@@ -494,7 +494,6 @@ void MemoryMetric::GetGpuMemoryUsage()
         */
         while (std::getline(gpuMem, line)) {
             if (sscanf(line.c_str(), "  kctx-0x%*x %ld %d", &gpuPages, &pid) != 0) {
-                LOG_INFO("Match on line %s", line.c_str());
                 unsigned long gpuBytes = gpuPages * mPageSize;
 
                 auto itr = mGpuMemoryUsage.find(pid);

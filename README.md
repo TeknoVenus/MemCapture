@@ -10,8 +10,14 @@ $ make -j$(nproc)
 
 ## Run
 ```shell
-$ ./MemCapture --duration 30 > /tmp/memory.txt
+$ ./MemCapture --platform AMLOGIC --duration 30 > /tmp/memory.txt
 ```
+```shell
+$ ./MemCapture --platform REALTEK --duration 30 > /tmp/memory.txt
+```
+
 Duration is the amount of time to capture data for. Averages calculated over this duration.
+
+Tool currently supports two platforms - `AMLOGIC` (default) and `REALTEK`. Note Realtek platforms don't expose performance metrics in the same way as Amlogic, so some stats are not available
 
 Check the contents of `/tmp/memory.txt` to see the memory report

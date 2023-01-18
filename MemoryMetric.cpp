@@ -1,6 +1,21 @@
-//
-// Created by Stephen F on 24/11/22.
-//
+/*
+* If not stated otherwise in this file or this component's LICENSE file the
+* following copyright and licenses apply:
+*
+* Copyright 2023 Stephen Foulds
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+* http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 
 #include "MemoryMetric.h"
 #include <thread>
@@ -22,8 +37,13 @@ MemoryMetric::MemoryMetric(Platform platform)
           mPlatform(platform)
 {
 
+    // Some metrics are returned as a number of pages instead of bytes, so get page size to be able to calculate
+    // human-readable values
     mPageSize = sysconf(_SC_PAGESIZE);
 
+    // Create a map of CMA regions that converts the directories in /sys/kernel/debug/cma/ to a human-readable name
+    // based on the kernel DTS file
+    // *** This will likely need updating for your particular device ***
     if (platform == Platform::AMLOGIC) {
         mCmaNames = {
                 std::make_pair("cma-0", "secmon_reserved"),
@@ -48,7 +68,7 @@ MemoryMetric::MemoryMetric(Platform platform)
         };
     }
 
-    // Create static measurements - store in KB
+    // Create static measurements for linux memory usage - store in KB
     Measurement total("Total");
     mLinuxMemoryMeasurements.insert(std::make_pair(total.GetName(), total));
 
@@ -77,6 +97,7 @@ MemoryMetric::MemoryMetric(Platform platform)
     mLinuxMemoryMeasurements.insert(
             std::make_pair(slabUnreclaimable.GetName(), slabUnreclaimable));
 
+    // Amlogic allows reporting memory bandwidth
     if (platform == Platform::AMLOGIC) {
         mMemoryBandwidthSupported = true;
         // Enable memory bandwidth monitoring
@@ -124,7 +145,6 @@ void MemoryMetric::CollectData(std::chrono::seconds frequency)
     std::unique_lock<std::mutex> lock(mLock);
 
     do {
-
         auto start = std::chrono::high_resolution_clock::now();
 
         GetLinuxMemoryUsage();
@@ -154,6 +174,7 @@ void MemoryMetric::PrintResults()
     tabulate::Table containerResults;
     tabulate::Table memoryBandwidth;
 
+    // *** Linux Memory Usage ***
     printf("======== Linux Memory ===========\n");
 
     memoryResults.add_row({"Value", "Min_KB", "Max_KB", "Average_KB"});
@@ -169,6 +190,7 @@ void MemoryMetric::PrintResults()
 
     Utils::PrintTable(memoryResults);
 
+    // *** GPU Memory Usage ***
     printf("\n======== GPU Memory ===========\n");
 
 
@@ -186,6 +208,7 @@ void MemoryMetric::PrintResults()
 
     Utils::PrintTable(gpuResults);
 
+    // *** CMA Memory Usage and breakdown ***
     printf("\n======== CMA Memory ===========\n");
 
     cmaResults.add_row(
@@ -225,6 +248,7 @@ void MemoryMetric::PrintResults()
     printf("\n");
     Utils::PrintTable(cmaSummary);
 
+    // *** Per-container memory usage ***
     printf("\n======== Container Memory ===========\n");
 
     containerResults.add_row(
@@ -241,6 +265,7 @@ void MemoryMetric::PrintResults()
 
     Utils::PrintTable(containerResults);
 
+    // *** Memory bandwidth (if supported) ***
     printf("\n======== Memory Bandwidth ===========\n");
 
     if (mMemoryBandwidthSupported) {
@@ -258,6 +283,7 @@ void MemoryMetric::PrintResults()
     }
 
 
+    // *** Memory fragmentation - break down per zone ***
     for (const auto &memoryZone: mMemoryFragmentation) {
         tabulate::Table memoryFragmentation;
 
@@ -289,6 +315,7 @@ void MemoryMetric::GetLinuxMemoryUsage()
 {
     LOG_INFO("Getting memory usage");
 
+    // Read memory data from /proc/meminfo and process
     std::ifstream meminfo("/proc/meminfo");
 
     if (!meminfo) {
@@ -364,14 +391,17 @@ void MemoryMetric::GetCmaMemoryUsage()
                 "/sys/kernel/debug/cma")) {
 
             // Read CMA metrics
+            // Total size of the CMA region
             auto countFile = std::ifstream(dirEntry.path() / "count");
             countFile >> countKb;
             countKb = (countKb * mPageSize) / (long double) 1024;
 
+            // Amount of pages used
             auto usedPagesFile = std::ifstream(dirEntry.path() / "used");
             usedPagesFile >> usedKb;
             usedKb = (usedKb * mPageSize) / (long double) 1024;
 
+            // Calculate how much of that region is unused
             unusedKb = countKb - usedKb;
 
             // Calculate some totals
@@ -387,17 +417,18 @@ void MemoryMetric::GetCmaMemoryUsage()
                 break;
             }
 
-
             // Add to measurements
             auto itr = mCmaMeasurements.find(cmaName);
 
             if (itr != mCmaMeasurements.end()) {
+                // If we have previous measurements for this region, add new data points
                 auto &measurement = itr->second;
 
                 measurement.sizeKb = countKb;
                 measurement.Used.AddDataPoint(usedKb);
                 measurement.Unused.AddDataPoint(unusedKb);
             } else {
+                // New CMA region, create measurements
                 auto used = Measurement("Used");
                 used.AddDataPoint(usedKb);
 
@@ -409,7 +440,8 @@ void MemoryMetric::GetCmaMemoryUsage()
             }
         }
 
-        // Work out how much CMA is borrowed by the kernel
+        // Work out how much CMA is borrowed by the kernel (this can occur under memory pressure scenarios where
+        // there is not enough memory elsewhere for userspace processes)
         std::ifstream meminfo("/proc/meminfo");
 
         if (!meminfo) {
@@ -429,7 +461,7 @@ void MemoryMetric::GetCmaMemoryUsage()
         long double borrowed = totalUnused - cmaFree;
         mCmaBorrowed.AddDataPoint(borrowed);
     } catch (std::filesystem::filesystem_error &error) {
-        LOG_WARN("Failed to open CMA debug with error %s", error.what());
+        LOG_WARN("Failed to open CMA debug file with error %s", error.what());
     }
 }
 
@@ -437,6 +469,7 @@ void MemoryMetric::GetGpuMemoryUsage()
 {
     LOG_INFO("Getting GPU memory usage");
 
+    // Mali GPUs report memory usage on a per PID basis
     std::ifstream gpuMem("/sys/kernel/debug/mali0/gpu_memory");
 
     if (!gpuMem) {
@@ -448,6 +481,7 @@ void MemoryMetric::GetGpuMemoryUsage()
     long gpuPages;
     pid_t pid;
 
+    // The format of the file changes between Amlogic and Realtek
     if (mPlatform == Platform::AMLOGIC) {
         // Amlogic example
         /* root@sky-llama-panel:~# cat /sys/kernel/debug/mali0/gpu_memory
@@ -522,6 +556,9 @@ void MemoryMetric::GetContainerMemoryUsage()
     LOG_INFO("Getting Container memory usage");
 
     long double memoryUsageKb = 0;
+
+    // Simplest way is to report memory usage by each cgroup, although this can result in some results that don't
+    // correspond to a container if something else created that cgroup
     for (const auto &dirEntry: std::filesystem::directory_iterator(
             "/sys/fs/cgroup/memory")) {
         if (!dirEntry.is_directory()) {
@@ -551,6 +588,7 @@ void MemoryMetric::GetMemoryBandwidth()
 {
     LOG_INFO("Getting memory bandwidth usage");
 
+    // Only supported on Amlogic
     if (mMemoryBandwidthSupported) {
         if (mPlatform == Platform::AMLOGIC) {
             std::ifstream memBandwidthFile("/sys/class/aml_ddr/usage_stat");
@@ -623,7 +661,8 @@ void MemoryMetric::CalculateFragmentation()
         }
 
         if (segments.size() != columnCount) {
-            LOG_WARN("Failed to parse buddyinfo - invalid number of columns (got %zd, expected %zd)", segments.size(), columnCount);
+            LOG_WARN("Failed to parse buddyinfo - invalid number of columns (got %zd, expected %zd)", segments.size(),
+                     columnCount);
         } else {
             // Calculate fragmentation % for this node
             int totalFreePages = 0;
@@ -637,7 +676,8 @@ void MemoryMetric::CalculateFragmentation()
                 freePages[order] = freeCount;
             }
 
-            // Now find out the fragmentation percentages (see https://www.stb.bskyb.com/confluence/display/2016/Memory+Fragmentation)
+            // Now find out the fragmentation percentages (see https://github.com/dsanders11/scripts/blob/master/Linux_Memory_Fragmentation.pdf and
+            // http://thomas.enix.org/pub/rmll2005/rmll2005-gorman.pdf)
             double fragPercentage;
             for (int i = 0; i < (int) freePages.size(); i++) {
                 fragPercentage = 0;

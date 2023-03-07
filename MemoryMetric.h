@@ -111,6 +111,7 @@ private:
 
     memoryBandwidth mMemoryBandwidth;
     bool mMemoryBandwidthSupported;
+    bool mGPUMemorySupported;
 
     // Position in vector reflects order
     std::map<std::string, std::vector<memoryFragmentation>> mMemoryFragmentation;

@@ -126,8 +126,8 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
         }
 
         auto end = std::chrono::high_resolution_clock::now();
-        LOG_INFO("ProcessMetric completed in %ld us",
-                 std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+        LOG_INFO("ProcessMetric completed in %lld us",
+                 (long long)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 
         // Wait for period before doing collection again, or until cancelled
         mCv.wait_for(lock, frequency);

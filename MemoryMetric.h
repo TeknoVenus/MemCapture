@@ -103,7 +103,21 @@ private:
 
     std::map<std::string, cmaMeasurement> mCmaMeasurements;
     std::map<std::string, Measurement> mLinuxMemoryMeasurements;
-    std::map<pid_t, Measurement> mGpuMemoryUsage;
+
+    struct gpuMeasurement
+    {
+        gpuMeasurement(std::string _containerName, Measurement &_used)
+                : containerName(std::move(_containerName)),
+                  Used(std::move(_used))
+        {
+
+        }
+
+        std::string containerName;
+        Measurement Used;
+    };
+    std::map<pid_t, gpuMeasurement> mGpuMeasurements;
+
     std::map<std::string, Measurement> mContainerMeasurements;
 
     Measurement mCmaFree;
@@ -121,4 +135,6 @@ private:
     std::map<std::string, std::string> mCmaNames;
 
     void CalculateFragmentation();
+    void GetGpuMemoryUsageBroadcom();
+    std::string GetCgroupPathByCgroupControllerAndPid(std::string &cgroup_controller, pid_t pid);
 };

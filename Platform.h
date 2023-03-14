@@ -22,5 +22,6 @@
 enum class Platform
 {
     AMLOGIC,
-    REALTEK
+    REALTEK,
+    BROADCOM
 };

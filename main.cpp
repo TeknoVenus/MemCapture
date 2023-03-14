@@ -35,7 +35,7 @@ static void displayUsage()
     printf("    Utility to capture memory statistics\n\n");
     printf("    -h, --help          Print this help and exit\n");
     printf("    -d, --duration      Amount of time (in seconds) to capture data for. Default 30 seconds\n");
-    printf("    -p, --platform      Platform we're running on. Supported options = ['AMLOGIC', 'REALTEK']. Defaults to Amlogic\n");
+    printf("    -p, --platform      Platform we're running on. Supported options = ['AMLOGIC', 'REALTEK', 'BROADCOM']. Defaults to Amlogic\n");
 }
 
 static void parseArgs(const int argc, char **argv)
@@ -72,6 +72,8 @@ static void parseArgs(const int argc, char **argv)
                     gPlatform = Platform::AMLOGIC;
                 } else if (platform == "REALTEK") {
                     gPlatform = Platform::REALTEK;
+                } else if (platform == "BROADCOM") {
+                    gPlatform = Platform::BROADCOM;
                 } else {
                     fprintf(stderr, "Warning: Unsupported platform %s\n", platform.c_str());
                     exit(EXIT_FAILURE);

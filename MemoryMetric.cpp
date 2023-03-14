@@ -66,6 +66,11 @@ MemoryMetric::MemoryMetric(Platform platform)
                 std::make_pair("cma-7", "cma-7"),
                 std::make_pair("cma-8", "cma-8"),
         };
+    } else if (platform == Platform::BROADCOM) {
+        mCmaNames = {
+                std::make_pair("cma-WiFi@4C0000", "cma-WiFi@4C0000"),
+                std::make_pair("cma-reserved", "cma-reserved")
+        };
     }
 
     // Create static measurements for linux memory usage - store in KB
@@ -97,14 +102,33 @@ MemoryMetric::MemoryMetric(Platform platform)
     mLinuxMemoryMeasurements.insert(
             std::make_pair(slabUnreclaimable.GetName(), slabUnreclaimable));
 
-    // Amlogic allows reporting memory bandwidth
-    if (platform == Platform::AMLOGIC) {
-        mMemoryBandwidthSupported = true;
-        // Enable memory bandwidth monitoring
-        std::ofstream ddrMode("/sys/class/aml_ddr/mode", std::ios::binary);
-        ddrMode << "1";
-    } else if (platform == Platform::REALTEK) {
-        mMemoryBandwidthSupported = false;
+    switch (platform) {
+        case Platform::AMLOGIC:
+        {
+            // Amlogic allows reporting memory bandwidth
+            mMemoryBandwidthSupported = true;
+            // Enable memory bandwidth monitoring
+            std::ofstream ddrMode("/sys/class/aml_ddr/mode", std::ios::binary);
+            ddrMode << "1";
+
+            // Amlogic reports GPU memory allocations
+            mGPUMemorySupported = true;
+            break;
+        }
+            
+        case Platform::REALTEK:
+            // Realtek does not report memory bandwidth
+            mMemoryBandwidthSupported = false;
+            // Realtek reports GPU memory allocations
+            mGPUMemorySupported = true;
+            break;
+
+        case Platform::BROADCOM:
+            // Line of enquiry open with Broadcom as to whether there is a way to get this info.
+            // TODO: Complete investigation.
+            mMemoryBandwidthSupported = false;
+            mGPUMemorySupported = true;
+            break;
     }
 
 }
@@ -155,8 +179,8 @@ void MemoryMetric::CollectData(std::chrono::seconds frequency)
         CalculateFragmentation();
 
         auto end = std::chrono::high_resolution_clock::now();
-        LOG_INFO("MemoryMetric completed in %ld us",
-                 std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+        LOG_INFO("MemoryMetric completed in %lld us",
+                 (long long)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 
         // Wait for period before doing collection again, or until cancelled
         mCv.wait_for(lock, frequency);
@@ -193,20 +217,24 @@ void MemoryMetric::PrintResults()
     // *** GPU Memory Usage ***
     printf("\n======== GPU Memory ===========\n");
 
+    if (mGPUMemorySupported) {
+        gpuResults.add_row({"PID", "Process", "Container", "Min_KB", "Max_KB", "Average_KB"});
 
-    gpuResults.add_row({"PID", "Process", "Min_KB", "Max_KB", "Average_KB"});
+        for (const auto &result: mGpuMeasurements) {
+            gpuResults.add_row({
+                                    std::to_string(result.first),
+                                    result.second.Used.GetName(),
+                                    result.second.containerName,
+                                    std::to_string(result.second.Used.GetMinRounded()),
+                                    std::to_string(result.second.Used.GetMaxRounded()),
+                                    std::to_string(result.second.Used.GetAverageRounded()),
+                            });
+        }
 
-    for (const auto &result: mGpuMemoryUsage) {
-        gpuResults.add_row({
-                                   std::to_string(result.first),
-                                   result.second.GetName(),
-                                   std::to_string(result.second.GetMinRounded()),
-                                   std::to_string(result.second.GetMaxRounded()),
-                                   std::to_string(result.second.GetAverageRounded()),
-                           });
+        Utils::PrintTable(gpuResults);
+    } else {
+        printf("Not supported\n");
     }
-
-    Utils::PrintTable(gpuResults);
 
     // *** CMA Memory Usage and breakdown ***
     printf("\n======== CMA Memory ===========\n");
@@ -467,88 +495,104 @@ void MemoryMetric::GetCmaMemoryUsage()
 
 void MemoryMetric::GetGpuMemoryUsage()
 {
-    LOG_INFO("Getting GPU memory usage");
+    if (mGPUMemorySupported) {
+        LOG_INFO("Getting GPU memory usage");
 
-    // Mali GPUs report memory usage on a per PID basis
-    std::ifstream gpuMem("/sys/kernel/debug/mali0/gpu_memory");
+        if (mPlatform == Platform::AMLOGIC || mPlatform == Platform::REALTEK) {
+            // Mali GPUs report memory usage on a per PID basis
+            std::ifstream gpuMem("/sys/kernel/debug/mali0/gpu_memory");
 
-    if (!gpuMem) {
-        LOG_WARN("Could not open gpu_memory file");
-        return;
-    }
+            if (!gpuMem) {
+                LOG_WARN("Could not open gpu_memory file");
+                return;
+            }
 
-    std::string line;
-    long gpuPages;
-    pid_t pid;
+            std::string line;
+            long gpuPages;
+            pid_t pid;
 
-    // The format of the file changes between Amlogic and Realtek
-    if (mPlatform == Platform::AMLOGIC) {
-        // Amlogic example
-        /* root@sky-llama-panel:~# cat /sys/kernel/debug/mali0/gpu_memory
-            mali0            total used_pages      25939
-            ----------------------------------------------------
-            kctx             pid              used_pages
-            ----------------------------------------------------
-            f1dbf000      14880       4558
-            f1c19000      14438        135
-            f1bb1000      14292      16359
-            f18c0000      10899       4887
-         */
-        while (std::getline(gpuMem, line)) {
-            if (sscanf(line.c_str(), "%*x %d %ld", &pid, &gpuPages) != 0) {
-                unsigned long gpuBytes = gpuPages * mPageSize;
+            // The format of the file changes between Amlogic and Realtek
+            if (mPlatform == Platform::AMLOGIC) {
+                // Amlogic example
+                /* root@sky-llama-panel:~# cat /sys/kernel/debug/mali0/gpu_memory
+                    mali0            total used_pages      25939
+                    ----------------------------------------------------
+                    kctx             pid              used_pages
+                    ----------------------------------------------------
+                    f1dbf000      14880       4558
+                    f1c19000      14438        135
+                    f1bb1000      14292      16359
+                    f18c0000      10899       4887
+                */
+                while (std::getline(gpuMem, line)) {
+                    if (sscanf(line.c_str(), "%*x %d %ld", &pid, &gpuPages) != 0) {
+                        unsigned long gpuBytes = gpuPages * mPageSize;
 
-                auto itr = mGpuMemoryUsage.find(pid);
+                        auto itr = mGpuMeasurements.find(pid);
 
-                if (itr != mGpuMemoryUsage.end()) {
-                    // Already got a measurement for this PID
-                    auto &measurement = itr->second;
-                    measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
-                } else {
-                    std::string processName;
-                    Procrank::GetProcessName(pid, processName);
+                        if (itr != mGpuMeasurements.end()) {
+                            // Already got a measurement for this PID
+                            auto &measurement = itr->second;
+                            measurement.Used.AddDataPoint(gpuBytes / (long double) 1024.0);
+                        } else {
+                            // Get container name (if any)
+                            std::string cgroup_controller("gpu");
+                            std::string containerName = GetCgroupPathByCgroupControllerAndPid(cgroup_controller, pid);
 
-                    Measurement measurement(processName);
-                    measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
-                    mGpuMemoryUsage.insert(std::make_pair(pid, measurement));
+                            std::string processName;
+                            Procrank::GetProcessName(pid, processName);
+
+                            Measurement used(processName);
+                            used.AddDataPoint(gpuBytes / (long double) 1024.0);
+
+                            auto measurement = gpuMeasurement(containerName, used);
+                            mGpuMeasurements.insert(std::make_pair(pid, measurement));
+                        }
+                    }
+                }
+            } else if (mPlatform == Platform::REALTEK) {
+                // Realtek example
+                // First column = pages, second column = PID
+                /* root@skyxione:/sys/kernel/debug/mali0# cat gpu_memory
+                mali0                  45605
+                kctx-0xfa847000      14102      15898
+                kctx-0xf7953000         42      15833
+                kctx-0xff0b0000       3316       9134
+                kctx-0xfec18000      20929       8344
+                kctx-0xfb9df000        135       6235
+                kctx-0xfb12e000       7081       4962
+                */
+                while (std::getline(gpuMem, line)) {
+                    if (sscanf(line.c_str(), "  kctx-0x%*x %ld %d", &gpuPages, &pid) != 0) {
+                        unsigned long gpuBytes = gpuPages * mPageSize;
+
+                        auto itr = mGpuMeasurements.find(pid);
+
+                        if (itr != mGpuMeasurements.end()) {
+                            // Already got a measurement for this PID
+                            auto &measurement = itr->second;
+                            measurement.Used.AddDataPoint(gpuBytes / (long double) 1024.0);
+                        } else {
+                            // Get container name (if any)
+                            std::string cgroup_controller("gpu");
+                            std::string containerName = GetCgroupPathByCgroupControllerAndPid(cgroup_controller, pid);
+
+                            std::string processName;
+                            Procrank::GetProcessName(pid, processName);
+
+                            Measurement used(processName);
+                            used.AddDataPoint(gpuBytes / (long double) 1024.0);
+
+                            auto measurement = gpuMeasurement(containerName, used);
+                            mGpuMeasurements.insert(std::make_pair(pid, measurement));
+                        }
+                    }
                 }
             }
-        }
-    } else if (mPlatform == Platform::REALTEK) {
-        // Realtek example
-        // First column = pages, second column = PID
-        /* root@skyxione:/sys/kernel/debug/mali0# cat gpu_memory
-        mali0                  45605
-          kctx-0xfa847000      14102      15898
-          kctx-0xf7953000         42      15833
-          kctx-0xff0b0000       3316       9134
-          kctx-0xfec18000      20929       8344
-          kctx-0xfb9df000        135       6235
-          kctx-0xfb12e000       7081       4962
-        */
-        while (std::getline(gpuMem, line)) {
-            if (sscanf(line.c_str(), "  kctx-0x%*x %ld %d", &gpuPages, &pid) != 0) {
-                unsigned long gpuBytes = gpuPages * mPageSize;
-
-                auto itr = mGpuMemoryUsage.find(pid);
-
-                if (itr != mGpuMemoryUsage.end()) {
-                    // Already got a measurement for this PID
-                    auto &measurement = itr->second;
-                    measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
-                } else {
-                    std::string processName;
-                    Procrank::GetProcessName(pid, processName);
-
-                    Measurement measurement(processName);
-                    measurement.AddDataPoint(gpuBytes / (long double) 1024.0);
-                    mGpuMemoryUsage.insert(std::make_pair(pid, measurement));
-                }
-            }
+        } else if (mPlatform == Platform::BROADCOM) {
+            GetGpuMemoryUsageBroadcom();
         }
     }
-
-
 }
 
 void MemoryMetric::GetContainerMemoryUsage()
@@ -556,6 +600,8 @@ void MemoryMetric::GetContainerMemoryUsage()
     LOG_INFO("Getting Container memory usage");
 
     long double memoryUsageKb = 0;
+    // List of system containers which we are not interested in.
+    std::string ignore_list[] = { "init.scope", "system.slice" };
 
     // Simplest way is to report memory usage by each cgroup, although this can result in some results that don't
     // correspond to a container if something else created that cgroup
@@ -566,30 +612,31 @@ void MemoryMetric::GetContainerMemoryUsage()
         }
 
         auto containerName = dirEntry.path().filename().string();
+        if (std::find(std::begin(ignore_list), std::end(ignore_list), containerName.c_str()) == std::end(ignore_list)) {
+            auto memoryUsageFile = std::ifstream(dirEntry.path() / "memory.usage_in_bytes");
+            memoryUsageFile >> memoryUsageKb;
+            memoryUsageKb /= (long double) 1024.0;
 
-        auto memoryUsageFile = std::ifstream(dirEntry.path() / "memory.usage_in_bytes");
-        memoryUsageFile >> memoryUsageKb;
-        memoryUsageKb /= (long double) 1024.0;
+            auto itr = mContainerMeasurements.find(containerName);
 
-        auto itr = mContainerMeasurements.find(containerName);
-
-        if (itr != mContainerMeasurements.end()) {
-            auto &measurement = itr->second;
-            measurement.AddDataPoint(memoryUsageKb);
-        } else {
-            Measurement measurement(containerName);
-            measurement.AddDataPoint(memoryUsageKb);
-            mContainerMeasurements.insert(std::make_pair(containerName, measurement));
+            if (itr != mContainerMeasurements.end()) {
+                auto &measurement = itr->second;
+                measurement.AddDataPoint(memoryUsageKb);
+            } else {
+                Measurement measurement(containerName);
+                measurement.AddDataPoint(memoryUsageKb);
+                mContainerMeasurements.insert(std::make_pair(containerName, measurement));
+            }
         }
     }
 }
 
 void MemoryMetric::GetMemoryBandwidth()
 {
-    LOG_INFO("Getting memory bandwidth usage");
-
     // Only supported on Amlogic
     if (mMemoryBandwidthSupported) {
+        LOG_INFO("Getting memory bandwidth usage");
+    
         if (mPlatform == Platform::AMLOGIC) {
             std::ifstream memBandwidthFile("/sys/class/aml_ddr/usage_stat");
 
@@ -617,9 +664,7 @@ void MemoryMetric::GetMemoryBandwidth()
                 i++;
             }
         }
-    } else {
-        // DDR bandwidth not supported
-        return;
+
     }
 
 
@@ -658,6 +703,8 @@ void MemoryMetric::CalculateFragmentation()
             columnCount = 15;
         } else if (mPlatform == Platform::REALTEK) {
             columnCount = 17;
+        } else if (mPlatform == Platform::BROADCOM) {
+            columnCount = 15;
         }
 
         if (segments.size() != columnCount) {
@@ -715,4 +762,168 @@ void MemoryMetric::CalculateFragmentation()
             }
         }
     }
+}
+
+/**
+ * Broadcom GPU memory allocations.
+ * Available from a series of directories under /sys/kernel/debug/dri/0/.
+ * Each directory has a 'client' file which needs to be parsed.
+ *
+ * Example paths:
+ *
+ * root@xione-sercomm:~# find /sys/kernel/debug/dri/0/ -name client
+ * /sys/kernel/debug/dri/0/13449-00000000f601794d/client
+ * /sys/kernel/debug/dri/0/13030-00000000cf255c5d/client
+ * /sys/kernel/debug/dri/0/12326-00000000426cbc26/client
+ * /sys/kernel/debug/dri/0/12298-00000000954ee8cf/client
+ * /sys/kernel/debug/dri/0/8804-000000004fe3dec5/client
+ * /sys/kernel/debug/dri/0/8632-0000000055df6881/client
+ * /sys/kernel/debug/dri/0/7566-000000003bfb5b6e/client
+ * root@xione-sercomm:~# 
+ *
+ * Each directory under /sys/kernel/debug/dri/0/ is of the form '<pid>-<64bit hex>'.
+ *
+ * pid is the process id of the process that allocated the gpu mem, the allocation being detailed in the 'client' file under that directory.
+ * Not sure what the 64 bit hex is. An address?
+ *
+ * Example content of a 'client' file:
+ *
+ * root@xione-sercomm:~# cat /sys/kernel/debug/dri/0/13449-00000000f601794d/client
+ *             command objects    Virtual  SHM pages Huge Pages
+ *     SkyBrowserLaunc       2     4096KB        0KB        4MB
+ * root@xione-sercomm:~# 
+ *
+ * Note that the process name does not include full path so this is instead retrieved from Procrank using the pid extracted from the directory name.
+*/
+void MemoryMetric::GetGpuMemoryUsageBroadcom()
+{
+    std::string line;
+    pid_t pid;
+
+    for (const auto& entry : std::filesystem::directory_iterator("/sys/kernel/debug/dri/0/")) {
+        const auto entryStr = entry.path().filename().string();
+        if (entry.is_directory()) {
+            // Scan as far as we need to.
+            if (sscanf(entryStr.c_str(), "%d-", &pid) == 1) {
+                //LOG_INFO("Extracted pid %d from path %s", pid, entryStr.c_str());
+            } else {
+                // Not interested in this directory.
+                continue;
+            }
+            std::string pathStr = std::string("/sys/kernel/debug/dri/0/") + entryStr + "/client";
+            std::ifstream gpuMem(pathStr.c_str());
+            if (!gpuMem) {
+                LOG_WARN("Could not open gpu_memory file");
+                continue;
+            }
+            while (std::getline(gpuMem, line)) {
+                char processName[32];
+                unsigned int objectsNum;
+                unsigned long virtualMemNum;
+                char virtualMemNumUnit[3];
+                unsigned long virtualMemNumBytes;
+
+                // Scan as far as we need to.
+                if (sscanf(line.c_str(), " %s %d %ld%2c", processName, &objectsNum, &virtualMemNum, virtualMemNumUnit) == 4) {
+                    
+                    virtualMemNumUnit[2] = 0;
+
+                    std::string virtualMemNumUnitStr(virtualMemNumUnit);
+
+                    if (virtualMemNumUnitStr == "KB") {
+                        virtualMemNumBytes = virtualMemNum * 1024;
+                    } else if (virtualMemNumUnitStr == "MB") {
+                        virtualMemNumBytes = virtualMemNum * 1024 * 1024;
+                    } else if (virtualMemNumUnitStr == "GB") {
+                        virtualMemNumBytes = virtualMemNum * 1024 * 1024 * 1024;
+                    } else {
+                        LOG_WARN("Could not parse this line: \'%s\'", line.c_str());
+                        continue;
+                    }
+
+                    auto itr = mGpuMeasurements.find(pid);
+
+                    if (itr != mGpuMeasurements.end()) {
+                        // Already got a measurement for this PID
+                        auto &measurement = itr->second;
+                        measurement.Used.AddDataPoint(virtualMemNumBytes / (long double) 1024.0);
+                   } else {
+                        std::string cgroup_controller("gpu");
+                        std::string container_name = GetCgroupPathByCgroupControllerAndPid(cgroup_controller, pid);
+                        std::string fullProcessName;
+                        Procrank::GetProcessName(pid, fullProcessName);
+
+                        Measurement used(fullProcessName);
+                        used.AddDataPoint(virtualMemNumBytes / (long double) 1024.0);
+
+                        auto measurement = gpuMeasurement(container_name, used);
+                        mGpuMeasurements.insert(std::make_pair(pid, measurement));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Extract cgroup name from /proc/<pid>/cgroup (if any) for specified cgroup_controller and pid and return. Otherwise return '-'.
+ *
+ * Example of process which is part of gpu cgroup. Here /proc/<pid>/cgroup will have a 'gpu' entry followed by name of cgroup which is also the name of the container:
+ *
+ * root@xione-sercomm:~# cat /proc/8619/cgroup 
+ * 10:gpu:/com.sky.as.apps_com.bskyb.epgui
+ * 9:pids:/com.sky.as.apps_com.bskyb.epgui
+ * 8:cpu,cpuacct:/com.sky.as.apps_com.bskyb.epgui
+ * 7:freezer:/com.sky.as.apps_com.bskyb.epgui
+ * 6:memory:/com.sky.as.apps_com.bskyb.epgui
+ * 5:blkio:/com.sky.as.apps_com.bskyb.epgui
+ * 4:devices:/com.sky.as.apps_com.bskyb.epgui
+ * 3:cpuset:/com.sky.as.apps_com.bskyb.epgui
+ * 2:debug:/com.sky.as.apps_com.bskyb.epgui
+ * 1:name=systemd:/com.sky.as.apps_com.bskyb.epgui
+ * root@xione-sercomm:~#        
+ *
+ * Example of process which is not part of gpu cgroup and therefore not part of a container. Here the 'gpu' entry is not followed by anything:
+ *
+ * root@xione-sercomm:~# cat /proc/7539/cgroup 
+ * 10:gpu:/
+ * 9:pids:/system.slice/sky-appsservice.service
+ * 8:cpu,cpuacct:/system.slice/sky-appsservice.service
+ * 7:freezer:/
+ * 6:memory:/system.slice/sky-appsservice.service
+ * 5:blkio:/
+ * 4:devices:/system.slice/sky-appsservice.service
+ * 3:cpuset:/
+ * 2:debug:/
+ * 1:name=systemd:/system.slice/sky-appsservice.service
+ * root@xione-sercomm:~# 
+ * 
+ * @param cgroup_controller name of cgroup controller e.g. 'gpu'
+ * @param pid pid of process
+ * @return name of cgroup (which is also name of container)
+ */
+std::string MemoryMetric::GetCgroupPathByCgroupControllerAndPid(std::string &cgroup_controller, pid_t pid)
+{
+    std::string cgrp_path("-");
+    std::string cgrp_file_path = "/proc/" + std::to_string(pid) + "/cgroup";
+    std::ifstream cgrp_strm(cgrp_file_path.c_str());
+    if (cgrp_strm) {
+        std::string cgrp_line;
+        int hierarchy_id;
+        char cgroup_path[128];
+        std::string sscanf_format = std::string("%d:") + cgroup_controller + ":/%s";
+        // Doesn't feel very efficient (need to memset cgroup_path each time round the loop) but the alternatives are std::string.find (clunky) or std::regex (inefficient).
+        // Besides, the gpu group always appears to be the first line.
+        while (std::getline(cgrp_strm, cgrp_line)) {
+            memset(cgroup_path, 0, sizeof(cgroup_path));
+            if (sscanf(cgrp_line.c_str(), sscanf_format.c_str(), &hierarchy_id, cgroup_path) == 2) {
+                cgrp_path = cgroup_path;
+                break;
+            }
+        }
+    } else {
+        LOG_WARN("Could not open process cgroup file \"%s\"", cgrp_file_path.c_str());
+    }
+
+    return cgrp_path;
 }

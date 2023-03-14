@@ -600,6 +600,8 @@ void MemoryMetric::GetContainerMemoryUsage()
     LOG_INFO("Getting Container memory usage");
 
     long double memoryUsageKb = 0;
+    // List of system containers which we are not interested in.
+    std::string ignore_list[] = { "init.scope", "system.slice" };
 
     // Simplest way is to report memory usage by each cgroup, although this can result in some results that don't
     // correspond to a container if something else created that cgroup
@@ -610,20 +612,21 @@ void MemoryMetric::GetContainerMemoryUsage()
         }
 
         auto containerName = dirEntry.path().filename().string();
+        if (std::find(std::begin(ignore_list), std::end(ignore_list), containerName.c_str()) == std::end(ignore_list)) {
+            auto memoryUsageFile = std::ifstream(dirEntry.path() / "memory.usage_in_bytes");
+            memoryUsageFile >> memoryUsageKb;
+            memoryUsageKb /= (long double) 1024.0;
 
-        auto memoryUsageFile = std::ifstream(dirEntry.path() / "memory.usage_in_bytes");
-        memoryUsageFile >> memoryUsageKb;
-        memoryUsageKb /= (long double) 1024.0;
+            auto itr = mContainerMeasurements.find(containerName);
 
-        auto itr = mContainerMeasurements.find(containerName);
-
-        if (itr != mContainerMeasurements.end()) {
-            auto &measurement = itr->second;
-            measurement.AddDataPoint(memoryUsageKb);
-        } else {
-            Measurement measurement(containerName);
-            measurement.AddDataPoint(memoryUsageKb);
-            mContainerMeasurements.insert(std::make_pair(containerName, measurement));
+            if (itr != mContainerMeasurements.end()) {
+                auto &measurement = itr->second;
+                measurement.AddDataPoint(memoryUsageKb);
+            } else {
+                Measurement measurement(containerName);
+                measurement.AddDataPoint(memoryUsageKb);
+                mContainerMeasurements.insert(std::make_pair(containerName, measurement));
+            }
         }
     }
 }

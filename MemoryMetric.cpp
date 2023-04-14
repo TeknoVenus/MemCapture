@@ -272,8 +272,8 @@ void MemoryMetric::PrintResults()
                                         std::to_string(result.second.GetMaxRounded()),
                                         std::to_string(result.second.GetAverageRounded())
                                 });
-        containerMemory->printReport();
     }
+    containerMemory->printReport();
 
     // *** Memory bandwidth (if supported) ***
     if (mMemoryBandwidthSupported) {
@@ -310,7 +310,6 @@ void MemoryMetric::PrintResults()
                     });
             i++;
         }
-
         memoryFragmentation->printReport();
     }
 }

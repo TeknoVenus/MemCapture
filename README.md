@@ -1,7 +1,9 @@
 # MemCapture
+
 Memory capture and analysis tool for RDK
 
 ## Build
+
 ```shell
 $ mkdir build && cd ./build
 $ cmake -DCMAKE_BUILD_TYPE=Release ..
@@ -9,7 +11,8 @@ $ make -j$(nproc)
 ```
 
 ## Run
-```shell
+
+```
 Usage: MemCapture <option(s)>
     Utility to capture memory statistics
 
@@ -21,17 +24,22 @@ Usage: MemCapture <option(s)>
 ```
 
 Example:
+
 ```shell
 $ ./MemCapture --platform AMLOGIC --duration 30 --report CSV --output-dir /tmp/memcapture_results/
 ```
+
 Averages are calculated over the specified duration.
 
 ### Results
 
-By default, results are saved into a single `report.txt` file in `<current-directory>/<timestamp>/report.txt`. To change the output directory, provide a valid path to the `-o` argument.
+By default, results are saved into a single `report.txt` file in `<current-directory>/<timestamp>/report.txt`. To change
+the output directory, provide a valid path to the `-o` argument.
 
-By selecting the CSV option, each report will be saved as its own CSV file which can then be imported into Excel for analysis.
+By selecting the CSV option, each report will be saved as its own CSV file which can then be imported into Excel for
+analysis.
 
 ### Notes
 
-Tool currently supports three platforms - `AMLOGIC` (default), `REALTEK` and `BROADCOM`. Note Realtek platforms don't expose performance metrics in the same way as Amlogic, so some stats are not available
+Tool currently supports three platforms - `AMLOGIC` (default), `REALTEK` and `BROADCOM`. Note Realtek platforms don't
+expose performance metrics in the same way as Amlogic, so some stats are not available

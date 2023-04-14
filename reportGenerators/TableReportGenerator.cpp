@@ -53,7 +53,7 @@ void TableReportGenerator::printReport()
     // Always append since we want to save everything to a single file
     std::ofstream outputFile(mFilename, std::ios::app);
 
-    outputFile << "======== " << mReportName.c_str() << " ========";
+    outputFile << "======== " << mReportName.c_str() << " ========\n";
 
     tabulate::Table resultsTable;
 
@@ -62,7 +62,7 @@ void TableReportGenerator::printReport()
     for (const auto &col: mColumnNames) {
         columnNames.emplace_back(col);
     }
-
+    
     resultsTable.add_row(columnNames);
 
     // Print results

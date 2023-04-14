@@ -60,7 +60,7 @@ void ProcessMetric::StopCollection()
 
 void ProcessMetric::PrintResults()
 {
-    std::vector<std::string> columns = {"PID", "Process", "Systemd Service", "Cmdline", "Container", "Min_RSS_KB",
+    std::vector<std::string> columns = {"PID", "Process", "Systemd Service", "Container", "Cmdline", "Min_RSS_KB",
                                         "Max_RSS_KB", "Average_RSS_KB", "Min_PSS_KB", "Max_PSS_KB", "Average_PSS_KB",
                                         "Min_USS_KB", "Max_USS_KB", "Average_USS_KB"};
     auto memoryResults = mReportGeneratorFactory->getReportGenerator("Process Memory", columns);
@@ -70,8 +70,8 @@ void ProcessMetric::PrintResults()
                                       std::to_string(result.first),
                                       result.second.ProcessName,
                                       result.second.SystemdService,
-                                      result.second.Cmdline,
                                       result.second.Container,
+                                      tabulate::Format::word_wrap(result.second.Cmdline, 200, "", false),
                                       std::to_string(result.second.Rss.GetMinRounded()),
                                       std::to_string(result.second.Rss.GetMaxRounded()),
                                       std::to_string(result.second.Rss.GetAverageRounded()),

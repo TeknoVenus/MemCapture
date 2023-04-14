@@ -102,7 +102,6 @@ std::vector<Procrank::ProcessInfo> Procrank::GetMemoryUsage() const
 void Procrank::GetProcessName(const pid_t pid, std::string &name)
 {
     char procPath[PATH_MAX];
-
     sprintf(procPath, "/proc/%u/cmdline", pid);
 
     std::ifstream cmdFile(procPath);
@@ -116,4 +115,27 @@ void Procrank::GetProcessName(const pid_t pid, std::string &name)
                 (std::istreambuf_iterator<char>()));
 
     name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
+}
+
+std::string Procrank::GetProcessCmdline(pid_t pid)
+{
+    char procPath[PATH_MAX];
+    sprintf(procPath, "/proc/%u/cmdline", pid);
+
+
+    std::ifstream cmdFile(procPath);
+
+    if (!cmdFile) {
+        return "<Unknown>";
+    }
+
+    std::string cmdline;
+    cmdline.assign((std::istreambuf_iterator<char>(cmdFile)),
+                   (std::istreambuf_iterator<char>()));
+
+    // Replace null chars with spaces
+    std::replace(cmdline.begin(), std::prev(cmdline.end()), '\0', ' ');
+    cmdline.erase(std::remove(std::prev(cmdline.end()), cmdline.end(), '\0'), cmdline.end());
+
+    return cmdline;
 }

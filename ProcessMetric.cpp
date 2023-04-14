@@ -42,7 +42,6 @@ void ProcessMetric::StartCollection(const std::chrono::seconds frequency)
 {
     mQuit = false;
     mCollectionThread = std::thread(&ProcessMetric::CollectData, this, frequency);
-    mCollectionThread.detach();
 }
 
 void ProcessMetric::StopCollection()
@@ -64,22 +63,27 @@ void ProcessMetric::PrintResults()
 
     tabulate::Table memoryResults;
 
-    memoryResults.add_row({"PID", "Process", "Min_RSS_KB", "Max_RSS_KB", "Average_RSS_KB", "Min_PSS_KB", "Max_PSS_KB", "Average_PSS_KB", "Min_USS_KB", "Max_USS_KB", "Average_USS_KB"});
+    memoryResults.add_row(
+            {"PID", "Process", "Systemd Service", "Cmdline", "Container", "Min_RSS_KB", "Max_RSS_KB", "Average_RSS_KB", "Min_PSS_KB",
+             "Max_PSS_KB", "Average_PSS_KB", "Min_USS_KB", "Max_USS_KB", "Average_USS_KB"});
 
-    for (const auto& result : mMeasurements) {
+    for (const auto &result: mMeasurements) {
         memoryResults.add_row({
-            std::to_string(result.first),
-            result.second.ProcessName,
-            std::to_string(result.second.Rss.GetMinRounded()),
-            std::to_string(result.second.Rss.GetMaxRounded()),
-            std::to_string(result.second.Rss.GetAverageRounded()),
-            std::to_string(result.second.Pss.GetMinRounded()),
-            std::to_string(result.second.Pss.GetMaxRounded()),
-            std::to_string(result.second.Pss.GetAverageRounded()),
-            std::to_string(result.second.Uss.GetMinRounded()),
-            std::to_string(result.second.Uss.GetMaxRounded()),
-            std::to_string(result.second.Uss.GetAverageRounded()),
-        });
+                                      std::to_string(result.first),
+                                      result.second.ProcessName,
+                                      result.second.SystemdService,
+                                      result.second.Cmdline,
+                                      result.second.Container,
+                                      std::to_string(result.second.Rss.GetMinRounded()),
+                                      std::to_string(result.second.Rss.GetMaxRounded()),
+                                      std::to_string(result.second.Rss.GetAverageRounded()),
+                                      std::to_string(result.second.Pss.GetMinRounded()),
+                                      std::to_string(result.second.Pss.GetMaxRounded()),
+                                      std::to_string(result.second.Pss.GetAverageRounded()),
+                                      std::to_string(result.second.Uss.GetMinRounded()),
+                                      std::to_string(result.second.Uss.GetMaxRounded()),
+                                      std::to_string(result.second.Uss.GetAverageRounded()),
+                              });
     }
 
     Utils::PrintTable(memoryResults);
@@ -120,14 +124,18 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
                 auto uss = Measurement("USS");
                 uss.AddDataPoint(process.memoryUsage.uss / (long double) 1024.0);
 
-                processMeasurement measurements(process.name, pss, rss, uss);
-                mMeasurements.insert(std::pair<int, processMeasurement>(process.pid, measurements));
+                std::string systemdService = Utils::getSystemdServiceName(process.pid);
+                std::string containerName = Utils::getContainerName(process.pid);
+                std::string cmdline = Procrank::GetProcessCmdline(process.pid);
+
+                processMeasurement measurement(process.name, cmdline, systemdService, containerName, pss, rss, uss);
+                mMeasurements.insert(std::pair<int, processMeasurement>(process.pid, measurement));
             }
         }
 
         auto end = std::chrono::high_resolution_clock::now();
         LOG_INFO("ProcessMetric completed in %lld us",
-                 (long long)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+                 (long long) std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 
         // Wait for period before doing collection again, or until cancelled
         mCv.wait_for(lock, frequency);

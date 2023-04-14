@@ -51,7 +51,6 @@ void PerformanceMetric::StartCollection(const std::chrono::seconds frequency)
 {
     mQuit = false;
     mCollectionThread = std::thread(&PerformanceMetric::CollectData, this, frequency);
-    mCollectionThread.detach();
 }
 
 void PerformanceMetric::StopCollection()
@@ -184,7 +183,7 @@ void PerformanceMetric::GetAudioHalStats()
         }
     }
 
-    fclose(fp);
+    pclose(fp);
     if (line) {
         free(line);
     }

@@ -48,6 +48,7 @@ public:
     std::vector<ProcessInfo> GetMemoryUsage() const;
 
     static void GetProcessName(pid_t pid, std::string &name);
+    static std::string GetProcessCmdline(pid_t pid);
 
 
 private:

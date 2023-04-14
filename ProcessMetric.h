@@ -48,8 +48,12 @@ private:
 private:
     struct processMeasurement
     {
-        processMeasurement(std::string name, Measurement _pss, Measurement _rss, Measurement _uss)
+        processMeasurement(std::string name, std::string cmdline, std::string systemdService, std::string containerName,
+                           Measurement _pss, Measurement _rss, Measurement _uss)
                 : ProcessName(std::move(name)),
+                  Cmdline(std::move(cmdline)),
+                  SystemdService(std::move(systemdService)),
+                  Container(std::move(containerName)),
                   Pss(std::move(_pss)),
                   Rss(std::move(_rss)),
                   Uss(std::move(_uss))
@@ -58,6 +62,9 @@ private:
         }
 
         std::string ProcessName;
+        std::string Cmdline;
+        std::string SystemdService;
+        std::string Container;
         Measurement Pss;
         Measurement Rss;
         Measurement Uss;

@@ -25,6 +25,7 @@
 #include <map>
 #include <mutex>
 #include <utility>
+#include "reportGenerators/ReportGeneratorFactory.h"
 
 #include "Procrank.h"
 
@@ -32,7 +33,7 @@
 class ProcessMetric : public IMetric
 {
 public:
-    ProcessMetric();
+    ProcessMetric(std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory);
 
     ~ProcessMetric();
 
@@ -76,4 +77,6 @@ private:
     std::mutex mLock;
 
     std::map<pid_t, processMeasurement> mMeasurements;
+
+    const std::shared_ptr<ReportGeneratorFactory> mReportGeneratorFactory;
 };

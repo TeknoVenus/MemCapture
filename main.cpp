@@ -26,14 +26,23 @@
 #include "MemoryMetric.h"
 #include "PerformanceMetric.h"
 
+#include "reportGenerators/ReportGeneratorFactory.h"
+
 static int gDuration = 30;
 static Platform gPlatform = Platform::AMLOGIC;
+
+// Default to save in current directory if not specified (will create timestamped subdir anyway)
+static std::filesystem::path gOutputDirectory = std::filesystem::current_path();
+
+static ReportGeneratorFactory::ReportType gReportType = ReportGeneratorFactory::ReportType::TABLE;
 
 static void displayUsage()
 {
     printf("Usage: MemCapture <option(s)>\n");
     printf("    Utility to capture memory statistics\n\n");
     printf("    -h, --help          Print this help and exit\n");
+    printf("    -o, --output-dir    Directory to save results in\n");
+    printf("    -r, --report        Type of report to generate. Supported options = ['CSV', 'TABLE']. Defaults to TABLE\n");
     printf("    -d, --duration      Amount of time (in seconds) to capture data for. Default 30 seconds\n");
     printf("    -p, --platform      Platform we're running on. Supported options = ['AMLOGIC', 'REALTEK', 'BROADCOM']. Defaults to Amlogic\n");
 }
@@ -41,10 +50,12 @@ static void displayUsage()
 static void parseArgs(const int argc, char **argv)
 {
     struct option longopts[] = {
-            {"help",     no_argument,       nullptr, (int) 'h'},
-            {"duration", required_argument, nullptr, (int) 'd'},
-            {"platform", required_argument, nullptr, (int) 'p'},
-            {nullptr, 0,                    nullptr, 0}
+            {"help",       no_argument,       nullptr, (int) 'h'},
+            {"duration",   required_argument, nullptr, (int) 'd'},
+            {"platform",   required_argument, nullptr, (int) 'p'},
+            {"output-dir", required_argument, nullptr, (int) 'o'},
+            {"report",     required_argument, nullptr, (int) 'r'},
+            {nullptr, 0,                      nullptr, 0}
     };
 
     opterr = 0;
@@ -52,7 +63,7 @@ static void parseArgs(const int argc, char **argv)
     int option;
     int longindex;
 
-    while ((option = getopt_long(argc, argv, "hd:p:", longopts, &longindex)) != -1) {
+    while ((option = getopt_long(argc, argv, "hd:p:o:r:", longopts, &longindex)) != -1) {
         switch (option) {
             case 'h':
                 displayUsage();
@@ -76,6 +87,23 @@ static void parseArgs(const int argc, char **argv)
                     gPlatform = Platform::BROADCOM;
                 } else {
                     fprintf(stderr, "Warning: Unsupported platform %s\n", platform.c_str());
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            }
+            case 'o': {
+                gOutputDirectory = std::filesystem::path(optarg);
+                break;
+            }
+            case 'r': {
+                std::string reportType(optarg);
+
+                if (reportType == "CSV") {
+                    gReportType = ReportGeneratorFactory::ReportType::CSV;
+                } else if (reportType == "TABLE") {
+                    gReportType = ReportGeneratorFactory::ReportType::TABLE;
+                } else {
+                    fprintf(stderr, "Warning: Unsupported report type %s\n", reportType.c_str());
                     exit(EXIT_FAILURE);
                 }
                 break;
@@ -107,22 +135,36 @@ int main(int argc, char *argv[])
         LOG_WARN("Failed to set nice value");
     }
 
+    // Create directory to save results in with the current date/time
+    auto timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream datetime;
+    datetime << std::put_time(std::localtime(&timestamp), "%F:%T");
+
+
+    auto timestampDirectory = gOutputDirectory / datetime.str();
+    try {
+        std::filesystem::create_directories(timestampDirectory);
+    } catch (std::filesystem::filesystem_error &e) {
+        LOG_ERROR("Failed to create directory %s to save results in: '%s'", timestampDirectory.string().c_str(),
+                  e.what());
+        return 1;
+    }
+
     LOG_INFO("** About to start memory capture for %d seconds **", gDuration);
 
+    // Select a report generator to save the results (e.g. table, csv...)
+    auto reportGenerator = std::make_shared<ReportGeneratorFactory>(gReportType, timestampDirectory);
+
     // Create all our metrics
-    ProcessMetric processMetric;
-    MemoryMetric memoryMetric(gPlatform);
-    PerformanceMetric performanceMetric;
+    ProcessMetric processMetric(reportGenerator);
+    MemoryMetric memoryMetric(gPlatform, reportGenerator);
+    PerformanceMetric performanceMetric(gPlatform, reportGenerator);
 
     // Start data collection
     // Capture procrank output less often to reduce CPU load
     processMetric.StartCollection(std::chrono::seconds(5));
     memoryMetric.StartCollection(std::chrono::seconds(3));
-
-    // We can only get performance metrics for now on Amlogic
-    if (gPlatform == Platform::AMLOGIC) {
-        performanceMetric.StartCollection(std::chrono::seconds(3));
-    }
+    performanceMetric.StartCollection(std::chrono::seconds(3));
 
     // Block main thread for the collection duration
     std::this_thread::sleep_for(std::chrono::seconds(gDuration));
@@ -130,20 +172,14 @@ int main(int argc, char *argv[])
     // Done! Stop data collection
     processMetric.StopCollection();
     memoryMetric.StopCollection();
-
-    if (gPlatform == Platform::AMLOGIC) {
-        performanceMetric.StopCollection();
-    }
+    performanceMetric.StopCollection();
 
     // Print results to stdout
     processMetric.PrintResults();
-    printf("\n");
     memoryMetric.PrintResults();
+    performanceMetric.PrintResults();
 
-    if (gPlatform == Platform::AMLOGIC) {
-        printf("\n");
-        performanceMetric.PrintResults();
-    }
+    LOG_INFO("Saved report in %s", timestampDirectory.string().c_str());
 
     return 0;
 }

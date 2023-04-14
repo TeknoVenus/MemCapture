@@ -24,9 +24,10 @@
 #include <algorithm>
 
 
-ProcessMetric::ProcessMetric()
+ProcessMetric::ProcessMetric(std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory)
         : mQuit(false),
-          mCv()
+          mCv(),
+          mReportGeneratorFactory(std::move(reportGeneratorFactory))
 {
 
 }
@@ -59,16 +60,13 @@ void ProcessMetric::StopCollection()
 
 void ProcessMetric::PrintResults()
 {
-    printf("======== Processes ===========\n");
+    std::vector<std::string> columns = {"PID", "Process", "Systemd Service", "Cmdline", "Container", "Min_RSS_KB",
+                                        "Max_RSS_KB", "Average_RSS_KB", "Min_PSS_KB", "Max_PSS_KB", "Average_PSS_KB",
+                                        "Min_USS_KB", "Max_USS_KB", "Average_USS_KB"};
+    auto memoryResults = mReportGeneratorFactory->getReportGenerator("Process Memory", columns);
 
-    tabulate::Table memoryResults;
-
-    memoryResults.add_row(
-            {"PID", "Process", "Systemd Service", "Cmdline", "Container", "Min_RSS_KB", "Max_RSS_KB", "Average_RSS_KB", "Min_PSS_KB",
-             "Max_PSS_KB", "Average_PSS_KB", "Min_USS_KB", "Max_USS_KB", "Average_USS_KB"});
-
-    for (const auto &result: mMeasurements) {
-        memoryResults.add_row({
+    for (const auto &result : mMeasurements) {
+        memoryResults->addRow({
                                       std::to_string(result.first),
                                       result.second.ProcessName,
                                       result.second.SystemdService,
@@ -86,7 +84,7 @@ void ProcessMetric::PrintResults()
                               });
     }
 
-    Utils::PrintTable(memoryResults);
+    memoryResults->printReport();
 }
 
 void ProcessMetric::CollectData(const std::chrono::seconds frequency)

@@ -26,13 +26,24 @@
 
 #include "Utils.h"
 
-PerformanceMetric::PerformanceMetric()
+PerformanceMetric::PerformanceMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory)
         : mQuit(false),
           mCv(),
           mAudioLatency("Audio Latency"),
           mAvDifference("AV Difference"),
-          mAvSessionInProgress(false)
+          mAvSessionInProgress(false),
+          mAudioHalExists(false),
+          mPlatform(platform),
+          mReportGeneratorFactory(std::move(reportGeneratorFactory)),
+          mSupportedPlatform(false)
 {
+    if (mPlatform != Platform::AMLOGIC) {
+        LOG_WARN("Performance metrics only supported on Amlogic for now");
+        mSupportedPlatform = false;
+    } else {
+        mSupportedPlatform = true;
+    }
+
     if (std::filesystem::exists("/usr/bin/hal_dump")) {
         mAudioHalExists = true;
     } else {
@@ -49,8 +60,10 @@ PerformanceMetric::~PerformanceMetric()
 
 void PerformanceMetric::StartCollection(const std::chrono::seconds frequency)
 {
-    mQuit = false;
-    mCollectionThread = std::thread(&PerformanceMetric::CollectData, this, frequency);
+    if (mSupportedPlatform) {
+        mQuit = false;
+        mCollectionThread = std::thread(&PerformanceMetric::CollectData, this, frequency);
+    }
 }
 
 void PerformanceMetric::StopCollection()
@@ -79,7 +92,7 @@ void PerformanceMetric::CollectData(std::chrono::seconds frequency)
 
         auto end = std::chrono::high_resolution_clock::now();
         LOG_INFO("PerformanceMetric completed in %lld us",
-                 (long long)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+                 (long long) std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 
         // Wait for period before doing collection again, or until cancelled
         mCv.wait_for(lock, frequency);
@@ -90,48 +103,35 @@ void PerformanceMetric::CollectData(std::chrono::seconds frequency)
 
 void PerformanceMetric::PrintResults()
 {
-    tabulate::Table decoderResults;
-    tabulate::Table sessionResults;
-    tabulate::Table audioHalResults;
+    if (!mSupportedPlatform) {
+        return;
+    }
 
-    printf("======== Video Decoder ===========\n");
-
-    decoderResults.add_row({"Statistic", "Value"});
-    decoderResults.add_row({"Frame Drop Count", std::to_string(mFrameDrop)});
-    decoderResults.add_row({"Frame Error Count", std::to_string(mFrameError)});
-    decoderResults.add_row({"HW Error Count", std::to_string(mHwError)});
-
-    Utils::PrintTable(decoderResults);
-
-    printf("\n======== A/V Session ===========\n");
+    auto decoderResults = mReportGeneratorFactory->getReportGenerator("Video Decoder", {"Statistic", "Value"});
+    decoderResults->addRow({"Frame Drop Count", std::to_string(mFrameDrop)});
+    decoderResults->addRow({"Frame Error Count", std::to_string(mFrameError)});
+    decoderResults->addRow({"HW Error Count", std::to_string(mHwError)});
 
     if (mAvSessionInProgress) {
-        sessionResults.add_row({"Statistic", "Min_ms", "Max_ms", "Average_ms"});
-        sessionResults.add_row({"A/V Sync Difference",
+        auto sessionResults = mReportGeneratorFactory->getReportGenerator("A/V Session", {"Statistic", "Min_ms", "Max_ms", "Average_ms"});
+        sessionResults->addRow({"A/V Sync Difference",
                                 std::to_string(mAvDifference.GetMin()),
                                 std::to_string(mAvDifference.GetMax()),
                                 std::to_string(mAvDifference.GetAverage())
                                });
 
-        Utils::PrintTable(sessionResults);
-    } else {
-        printf("No A/V session in progress\n");
+        sessionResults->printReport();
     }
 
-    printf("\n======== Audio HAL ===========\n");
-
     if (mAudioHalExists) {
-        audioHalResults.add_row({"Statistic", "Min_ms", "Max_ms", "Average_ms"});
-        audioHalResults.add_row({"Total Latency",
+        auto audioHalResults = mReportGeneratorFactory->getReportGenerator("Audio HAL", {"Statistic", "Min_ms", "Max_ms", "Average_ms"});
+        audioHalResults->addRow({"Total Latency",
                                  std::to_string(mAudioLatency.GetMin()),
                                  std::to_string(mAudioLatency.GetMax()),
                                  std::to_string(mAudioLatency.GetAverage())
                                 });
-    } else {
-        printf("Could not find hal_dump binary\n");
+        audioHalResults->printReport();
     }
-
-    Utils::PrintTable(audioHalResults);
 }
 
 void PerformanceMetric::GetDecoderStats()

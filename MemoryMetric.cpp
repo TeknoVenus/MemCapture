@@ -26,7 +26,7 @@
 
 #include "Utils.h"
 
-MemoryMetric::MemoryMetric(Platform platform)
+MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory)
         : mQuit(false),
           mCv(),
           mLinuxMemoryMeasurements{},
@@ -34,7 +34,8 @@ MemoryMetric::MemoryMetric(Platform platform)
           mCmaBorrowed("CmaBorrowedKernel"),
           mMemoryBandwidth({0, 0, 0, 0}),
           mMemoryFragmentation{},
-          mPlatform(platform)
+          mPlatform(platform),
+          mReportGeneratorFactory(std::move(reportGeneratorFactory))
 {
 
     // Some metrics are returned as a number of pages instead of bytes, so get page size to be able to calculate
@@ -189,37 +190,27 @@ void MemoryMetric::CollectData(std::chrono::seconds frequency)
 
 void MemoryMetric::PrintResults()
 {
-    tabulate::Table memoryResults;
-    tabulate::Table gpuResults;
-    tabulate::Table cmaResults;
-    tabulate::Table cmaSummary;
-    tabulate::Table containerResults;
-    tabulate::Table memoryBandwidth;
-
     // *** Linux Memory Usage ***
-    printf("======== Linux Memory ===========\n");
-
-    memoryResults.add_row({"Value", "Min_KB", "Max_KB", "Average_KB"});
-
+    auto linuxMemoryStats = mReportGeneratorFactory->getReportGenerator("Linux Memory",
+                                                                        {"Value", "Min_KB", "Max_KB", "Average_KB"});
     for (const auto &result: mLinuxMemoryMeasurements) {
-        memoryResults.add_row({
-                                      result.first,
-                                      std::to_string(result.second.GetMinRounded()),
-                                      std::to_string(result.second.GetMaxRounded()),
-                                      std::to_string(result.second.GetAverageRounded()),
-                              });
+        linuxMemoryStats->addRow({
+                                         result.first,
+                                         std::to_string(result.second.GetMinRounded()),
+                                         std::to_string(result.second.GetMaxRounded()),
+                                         std::to_string(result.second.GetAverageRounded()),
+                                 });
     }
-
-    Utils::PrintTable(memoryResults);
+    linuxMemoryStats->printReport();
 
     // *** GPU Memory Usage ***
-    printf("\n======== GPU Memory ===========\n");
-
     if (mGPUMemorySupported) {
-        gpuResults.add_row({"PID", "Process", "Container", "Min_KB", "Max_KB", "Average_KB"});
+        auto gpuResults = mReportGeneratorFactory->getReportGenerator("GPU Memory",
+                                                                      {"PID", "Process", "Container", "Min_KB",
+                                                                       "Max_KB", "Average_KB"});
 
         for (const auto &result: mGpuMeasurements) {
-            gpuResults.add_row({
+            gpuResults->addRow({
                                        std::to_string(result.first),
                                        result.second.Used.GetName(),
                                        result.second.containerName,
@@ -228,21 +219,16 @@ void MemoryMetric::PrintResults()
                                        std::to_string(result.second.Used.GetAverageRounded()),
                                });
         }
-
-        Utils::PrintTable(gpuResults);
-    } else {
-        printf("Not supported\n");
+        gpuResults->printReport();
     }
 
     // *** CMA Memory Usage and breakdown ***
-    printf("\n======== CMA Memory ===========\n");
-
-    cmaResults.add_row(
-            {"Region", "Size_KB", "Used_Min_KB", "Used_Max_KB", "Used_Average_KB", "Unused_Min_KB", "Unused_Max_KB",
-             "Unused_Average_KB"});
-
+    auto cmaResults = mReportGeneratorFactory->getReportGenerator("CMA Memory",
+                                                                  {"Region", "Size_KB", "Used_Min_KB", "Used_Max_KB",
+                                                                   "Used_Average_KB", "Unused_Min_KB", "Unused_Max_KB",
+                                                                   "Unused_Average_KB"});
     for (const auto &result: mCmaMeasurements) {
-        cmaResults.add_row({
+        cmaResults->addRow({
                                    result.first,
                                    std::to_string(result.second.sizeKb),
                                    std::to_string(result.second.Used.GetMinRounded()),
@@ -253,75 +239,67 @@ void MemoryMetric::PrintResults()
                                    std::to_string(result.second.Unused.GetAverageRounded())
                            });
     }
+    cmaResults->printReport();
 
-    Utils::PrintTable(cmaResults);
 
-    cmaSummary.add_row({"", "Min_KB", "Max_KB", "Average_KB"});
-    cmaSummary.add_row({
+    // *** CMA Summary ***
+    auto cmaSummary = mReportGeneratorFactory->getReportGenerator("CMA Summary",
+                                                                  {"", "Min_KB", "Max_KB", "Average_KB"});
+
+    cmaSummary->addRow({
                                "CMA Free",
                                std::to_string(mCmaFree.GetMinRounded()),
                                std::to_string(mCmaFree.GetMaxRounded()),
                                std::to_string(mCmaFree.GetAverageRounded()),
                        });
 
-    cmaSummary.add_row({
+    cmaSummary->addRow({
                                "CMA Borrowed by Kernel",
                                std::to_string(mCmaBorrowed.GetMinRounded()),
                                std::to_string(mCmaBorrowed.GetMaxRounded()),
                                std::to_string(mCmaBorrowed.GetAverageRounded()),
                        });
-
-    printf("\n");
-    Utils::PrintTable(cmaSummary);
+    cmaSummary->printReport();
 
     // *** Per-container memory usage ***
-    printf("\n======== Container Memory ===========\n");
-
-    containerResults.add_row(
-            {"Container", "Used_Min_KB", "Used_Max_KB", "Used_Average_KB"});
-
+    auto containerMemory = mReportGeneratorFactory->getReportGenerator("Container Memory",
+                                                                       {"Container", "Used_Min_KB", "Used_Max_KB",
+                                                                        "Used_Average_KB"});
     for (const auto &result: mContainerMeasurements) {
-        containerResults.add_row({
-                                         result.first,
-                                         std::to_string(result.second.GetMinRounded()),
-                                         std::to_string(result.second.GetMaxRounded()),
-                                         std::to_string(result.second.GetAverageRounded())
-                                 });
+        containerMemory->addRow({
+                                        result.first,
+                                        std::to_string(result.second.GetMinRounded()),
+                                        std::to_string(result.second.GetMaxRounded()),
+                                        std::to_string(result.second.GetAverageRounded())
+                                });
+        containerMemory->printReport();
     }
-
-    Utils::PrintTable(containerResults);
 
     // *** Memory bandwidth (if supported) ***
-    printf("\n======== Memory Bandwidth ===========\n");
-
     if (mMemoryBandwidthSupported) {
-        memoryBandwidth.add_row(
-                {"", "Bandwidth_KB/s", "Usage_%"});
+        auto memoryBandwidth = mReportGeneratorFactory->getReportGenerator("Memory Bandwidth",
+                                                                           {"", "Bandwidth_KB/s", "Usage_%"});
 
-        memoryBandwidth.add_row(
-                {"Max", std::to_string(mMemoryBandwidth.maxKBps), std::to_string(mMemoryBandwidth.maxUsagePercent)});
-        memoryBandwidth.add_row({"Average", std::to_string(mMemoryBandwidth.averageKBps),
+        memoryBandwidth->addRow({"Max",
+                                 std::to_string(mMemoryBandwidth.maxKBps),
+                                 std::to_string(mMemoryBandwidth.maxUsagePercent)});
+        memoryBandwidth->addRow({"Average",
+                                 std::to_string(mMemoryBandwidth.averageKBps),
                                  std::to_string(mMemoryBandwidth.averageUsagePercent)});
 
-        Utils::PrintTable(memoryBandwidth);
-    } else {
-        printf("Not supported\n");
+        memoryBandwidth->printReport();
     }
-
 
     // *** Memory fragmentation - break down per zone ***
     for (const auto &memoryZone: mMemoryFragmentation) {
-        tabulate::Table memoryFragmentation;
-
-        printf("\n======== Memory Fragmentation - %s ===========\n", memoryZone.first.c_str());
-
-        memoryFragmentation.add_row(
-                {"Order", "Min_Free_Pages", "Max_Free_Pages", "Average_Free_Pages", "Min_Fragmentation_%",
-                 "Max_Fragmentation_%", "Average_Fragmentation_%"});
+        std::string reportName = "Memory Fragmentation - Zone " + memoryZone.first;
+        auto memoryFragmentation = mReportGeneratorFactory->getReportGenerator(reportName,
+                                                                               {"Order", "Min_Free_Pages", "Max_Free_Pages", "Average_Free_Pages", "Min_Fragmentation_%",
+                                                                                "Max_Fragmentation_%", "Average_Fragmentation_%"});
 
         int i = 0;
         for (const auto &measurement: memoryZone.second) {
-            memoryFragmentation.add_row(
+            memoryFragmentation->addRow(
                     {std::to_string(i),
                      std::to_string(measurement.FreePages.GetMinRounded()),
                      std::to_string(measurement.FreePages.GetMaxRounded()),
@@ -333,7 +311,7 @@ void MemoryMetric::PrintResults()
             i++;
         }
 
-        Utils::PrintTable(memoryFragmentation);
+        memoryFragmentation->printReport();
     }
 }
 

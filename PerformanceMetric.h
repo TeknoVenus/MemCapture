@@ -25,14 +25,15 @@
 #include <condition_variable>
 #include <map>
 #include <mutex>
-
+#include "Platform.h"
 #include "Procrank.h"
+#include "reportGenerators/ReportGeneratorFactory.h"
 
 
 class PerformanceMetric : public IMetric
 {
 public:
-    PerformanceMetric();
+    PerformanceMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory);
 
     ~PerformanceMetric();
 
@@ -46,7 +47,9 @@ private:
     void CollectData(std::chrono::seconds frequency);
 
     void GetDecoderStats();
+
     void GetAudioHalStats();
+
     void GetAvSessionStats();
 
 private:
@@ -65,4 +68,10 @@ private:
 
     bool mAvSessionInProgress;
     bool mAudioHalExists;
+
+    const Platform mPlatform;
+    const std::shared_ptr<ReportGeneratorFactory> mReportGeneratorFactory;
+
+    bool mSupportedPlatform;
+
 };

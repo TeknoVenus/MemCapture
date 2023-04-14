@@ -28,12 +28,13 @@
 #include "Platform.h"
 
 #include "Procrank.h"
+#include "reportGenerators/ReportGeneratorFactory.h"
 
 
 class MemoryMetric : public IMetric
 {
 public:
-    MemoryMetric(Platform platform);
+    MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory);
 
     ~MemoryMetric();
 
@@ -136,5 +137,6 @@ private:
 
     void CalculateFragmentation();
     void GetGpuMemoryUsageBroadcom();
-    std::string GetCgroupPathByCgroupControllerAndPid(std::string &cgroup_controller, pid_t pid);
+
+    std::shared_ptr<ReportGeneratorFactory> mReportGeneratorFactory;
 };

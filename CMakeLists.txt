@@ -21,7 +21,7 @@ project(MemCapture)
 
 # The following disables an annoying warning "<blah> will change in GCC X.XX"
 add_compile_options(-Wno-psabi)
-add_compile_options(-Wall)
+add_compile_options(-Wall -Wextra)
 
 find_package(Threads REQUIRED)
 
@@ -31,6 +31,9 @@ add_executable(${PROJECT_NAME}
         main.cpp
         Measurement.cpp
         Procrank.cpp
+
+        reportGenerators/TableReportGenerator.cpp
+        reportGenerators/CsvReportGenerator.cpp
 
         ProcessMetric.cpp
         MemoryMetric.cpp

@@ -19,21 +19,20 @@
 #pragma once
 
 #include "IMetric.h"
-
 #include <thread>
 #include <condition_variable>
 #include <map>
 #include <mutex>
 #include <utility>
+#include "GroupManager.h"
 #include "reportGenerators/ReportGeneratorFactory.h"
-
 #include "Procrank.h"
-
 
 class ProcessMetric : public IMetric
 {
 public:
-    ProcessMetric(std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory);
+    ProcessMetric(std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory,
+                  std::optional<std::shared_ptr<GroupManager>> groupManager);
 
     ~ProcessMetric();
 
@@ -43,34 +42,27 @@ public:
 
     void PrintResults() override;
 
-private:
-    void CollectData(std::chrono::seconds frequency);
-
-private:
     struct processMeasurement
     {
-        processMeasurement(std::string name, std::string cmdline, std::string systemdService, std::string containerName,
-                           Measurement _pss, Measurement _rss, Measurement _uss)
-                : ProcessName(std::move(name)),
-                  Cmdline(std::move(cmdline)),
-                  SystemdService(std::move(systemdService)),
-                  Container(std::move(containerName)),
+        processMeasurement(Process _process, Measurement _pss, Measurement _rss, Measurement _uss)
+                : ProcessInfo(std::move(_process)),
                   Pss(std::move(_pss)),
                   Rss(std::move(_rss)),
                   Uss(std::move(_uss))
         {
-
         }
 
-        std::string ProcessName;
-        std::string Cmdline;
-        std::string SystemdService;
-        std::string Container;
+        Process ProcessInfo;
         Measurement Pss;
         Measurement Rss;
         Measurement Uss;
     };
 
+
+private:
+    void CollectData(std::chrono::seconds frequency);
+
+private:
     std::thread mCollectionThread;
     bool mQuit;
     std::condition_variable mCv;
@@ -79,4 +71,5 @@ private:
     std::map<pid_t, processMeasurement> mMeasurements;
 
     const std::shared_ptr<ReportGeneratorFactory> mReportGeneratorFactory;
+    const std::optional<std::shared_ptr<GroupManager>> mGroupManager;
 };

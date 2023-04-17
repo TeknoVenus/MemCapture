@@ -21,15 +21,42 @@ Usage: MemCapture <option(s)>
     -r, --report        Type of report to generate. Supported options = ['CSV', 'TABLE']. Defaults to TABLE
     -d, --duration      Amount of time (in seconds) to capture data for. Default 30 seconds
     -p, --platform      Platform we're running on. Supported options = ['AMLOGIC', 'REALTEK', 'BROADCOM']. Defaults to Amlogic
+    -g, --groups        Path to JSON file containing the group mappings (optional)
 ```
 
 Example:
 
 ```shell
-$ ./MemCapture --platform AMLOGIC --duration 30 --report CSV --output-dir /tmp/memcapture_results/
+$ ./MemCapture --platform AMLOGIC --duration 30 --groups ./groups.json --report CSV --output-dir /tmp/memcapture_results/
 ```
 
 Averages are calculated over the specified duration.
+
+### Process Grouping
+
+To ease analysis, MemCapture supports grouping processes into categories. This is done by providing MemCapture with a
+JSON file containing the groups and regexes defining which process(es) should belong to that group.
+
+For example if the provided JSON file contained the below:
+
+```json
+{
+  "processes": [
+    {
+      "group": "Logging",
+      "processes": [
+        "syslog-ng",
+        "systemd-journald"
+      ]
+    }
+  ]
+}
+```
+
+The `syslog-ng` and `systemd-journald` processes would belong to the `Logging` group and show up in the process list
+with that group name.
+
+An example file (`groups.example.json`) is provided in the repo.
 
 ### Results
 

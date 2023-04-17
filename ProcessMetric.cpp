@@ -18,16 +18,15 @@
 */
 
 #include "ProcessMetric.h"
-#include "Utils.h"
-
-#include <tabulate/table.hpp>
 #include <algorithm>
 
 
-ProcessMetric::ProcessMetric(std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory)
+ProcessMetric::ProcessMetric(std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory,
+                             std::optional<std::shared_ptr<GroupManager>> groupManager)
         : mQuit(false),
           mCv(),
-          mReportGeneratorFactory(std::move(reportGeneratorFactory))
+          mReportGeneratorFactory(std::move(reportGeneratorFactory)),
+          mGroupManager(std::move(groupManager))
 {
 
 }
@@ -60,18 +59,26 @@ void ProcessMetric::StopCollection()
 
 void ProcessMetric::PrintResults()
 {
-    std::vector<std::string> columns = {"PID", "Process", "Systemd Service", "Container", "Cmdline", "Min_RSS_KB",
+    std::vector<std::string> columns = {"PID", "Process", "Group", "Systemd Service", "Container", "Cmdline",
+                                        "Min_RSS_KB",
                                         "Max_RSS_KB", "Average_RSS_KB", "Min_PSS_KB", "Max_PSS_KB", "Average_PSS_KB",
                                         "Min_USS_KB", "Max_USS_KB", "Average_USS_KB"};
     auto memoryResults = mReportGeneratorFactory->getReportGenerator("Process Memory", columns);
 
-    for (const auto &result : mMeasurements) {
+    for (const auto &result: mMeasurements) {
+        std::optional<std::string> group = std::nullopt;
+        if (mGroupManager.has_value())
+        {
+            group = result.second.ProcessInfo.group(mGroupManager.value());
+        }
+
         memoryResults->addRow({
                                       std::to_string(result.first),
-                                      result.second.ProcessName,
-                                      result.second.SystemdService,
-                                      result.second.Container,
-                                      tabulate::Format::word_wrap(result.second.Cmdline, 200, "", false),
+                                      result.second.ProcessInfo.name(),
+                                      group.has_value() ? group.value() : "Unknown",
+                                      result.second.ProcessInfo.systemdService().has_value() ? result.second.ProcessInfo.systemdService().value() : "-",
+                                      result.second.ProcessInfo.container().has_value() ? result.second.ProcessInfo.container().value() : "-",
+                                      tabulate::Format::word_wrap(result.second.ProcessInfo.cmdline(), 200, "", false),
                                       std::to_string(result.second.Rss.GetMinRounded()),
                                       std::to_string(result.second.Rss.GetMaxRounded()),
                                       std::to_string(result.second.Rss.GetAverageRounded()),
@@ -92,7 +99,7 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
     std::unique_lock<std::mutex> lock(mLock);
 
     do {
-        LOG_INFO("Collecting process data");
+        //LOG_INFO("Collecting process data");
         auto start = std::chrono::high_resolution_clock::now();
 
         // Use procrank to get the memory usage for all processes in the system at this moment in time
@@ -102,32 +109,28 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
         // This can take 0.5 - 1 second...
         auto processMemory = procrank.GetMemoryUsage();
 
-        for (const auto &process: processMemory) {
-
-            auto itr = mMeasurements.find(process.pid);
+        for (const auto &procrankMeasurement: processMemory) {
+            auto itr = mMeasurements.find(procrankMeasurement.process.pid());
             if (itr != mMeasurements.end()) {
                 // Already got a measurement for this PID
                 auto &measurement = itr->second;
-                measurement.Pss.AddDataPoint(process.memoryUsage.pss / (long double) 1024.0);
-                measurement.Rss.AddDataPoint(process.memoryUsage.rss / (long double) 1024.0);
-                measurement.Uss.AddDataPoint(process.memoryUsage.uss / (long double) 1024.0);
+                measurement.Pss.AddDataPoint(procrankMeasurement.memoryUsage.pss / (long double) 1024.0);
+                measurement.Rss.AddDataPoint(procrankMeasurement.memoryUsage.rss / (long double) 1024.0);
+                measurement.Uss.AddDataPoint(procrankMeasurement.memoryUsage.uss / (long double) 1024.0);
             } else {
                 // Store in KB
                 auto pss = Measurement("PSS");
-                pss.AddDataPoint(process.memoryUsage.pss / (long double) 1024.0);
+                pss.AddDataPoint(procrankMeasurement.memoryUsage.pss / (long double) 1024.0);
 
                 auto rss = Measurement("RSS");
-                rss.AddDataPoint(process.memoryUsage.rss / (long double) 1024.0);
+                rss.AddDataPoint(procrankMeasurement.memoryUsage.rss / (long double) 1024.0);
 
                 auto uss = Measurement("USS");
-                uss.AddDataPoint(process.memoryUsage.uss / (long double) 1024.0);
+                uss.AddDataPoint(procrankMeasurement.memoryUsage.uss / (long double) 1024.0);
 
-                std::string systemdService = Utils::getSystemdServiceName(process.pid);
-                std::string containerName = Utils::getContainerName(process.pid);
-                std::string cmdline = Procrank::GetProcessCmdline(process.pid);
-
-                processMeasurement measurement(process.name, cmdline, systemdService, containerName, pss, rss, uss);
-                mMeasurements.insert(std::pair<int, processMeasurement>(process.pid, measurement));
+                processMeasurement measurement(procrankMeasurement.process, pss, rss, uss);
+                mMeasurements.insert(
+                        std::pair<int, processMeasurement>(procrankMeasurement.process.pid(), measurement));
             }
         }
 

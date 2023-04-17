@@ -45,7 +45,7 @@ Procrank::~Procrank()
 }
 
 
-std::vector<Procrank::ProcessInfo> Procrank::GetMemoryUsage() const
+std::vector<Procrank::ProcessMemoryUsage> Procrank::GetMemoryUsage() const
 {
     if (mKernel == nullptr) {
         return {};
@@ -60,7 +60,7 @@ std::vector<Procrank::ProcessInfo> Procrank::GetMemoryUsage() const
         return {};
     }
 
-    std::vector<Procrank::ProcessInfo> processes;
+    std::vector<Procrank::ProcessMemoryUsage> processes;
     std::string cmdline;
     pm_process_t *proc = {};
     pid_t pid;
@@ -68,11 +68,10 @@ std::vector<Procrank::ProcessInfo> Procrank::GetMemoryUsage() const
     for (size_t i = 0; i < num_procs; i++) {
         pid = pids[i];
 
-        Procrank::ProcessInfo info = {};
-        info.pid = pid;
-        GetProcessName(pid, info.name);
+        Process process(pid);
+        ProcessMemoryUsage memoryUsage(process);
 
-        if (info.name.empty()) {
+        if (process.name().empty()) {
             continue;
         }
 
@@ -82,12 +81,11 @@ std::vector<Procrank::ProcessInfo> Procrank::GetMemoryUsage() const
             continue;
         }
 
-        info.memoryUsage = {};
-        error = pm_process_usage(proc, &info.memoryUsage);
+        error = pm_process_usage(proc, &memoryUsage.memoryUsage);
         if (error != 0) {
             LOG_WARN("Could not get memory usage for PID %d", pid);
         } else {
-            processes.emplace_back(info);
+            processes.emplace_back(memoryUsage);
         }
 
         pm_process_destroy(proc);
@@ -97,45 +95,4 @@ std::vector<Procrank::ProcessInfo> Procrank::GetMemoryUsage() const
     LOG_INFO("Got memory usage for %zd PIDs", processes.size());
 
     return processes;
-}
-
-void Procrank::GetProcessName(const pid_t pid, std::string &name)
-{
-    char procPath[PATH_MAX];
-    sprintf(procPath, "/proc/%u/cmdline", pid);
-
-    std::ifstream cmdFile(procPath);
-
-    if (!cmdFile) {
-        name = "<Unknown>";
-        return;
-    }
-
-    name.assign((std::istreambuf_iterator<char>(cmdFile)),
-                (std::istreambuf_iterator<char>()));
-
-    name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
-}
-
-std::string Procrank::GetProcessCmdline(pid_t pid)
-{
-    char procPath[PATH_MAX];
-    sprintf(procPath, "/proc/%u/cmdline", pid);
-
-
-    std::ifstream cmdFile(procPath);
-
-    if (!cmdFile) {
-        return "<Unknown>";
-    }
-
-    std::string cmdline;
-    cmdline.assign((std::istreambuf_iterator<char>(cmdFile)),
-                   (std::istreambuf_iterator<char>()));
-
-    // Replace null chars with spaces
-    std::replace(cmdline.begin(), std::prev(cmdline.end()), '\0', ' ');
-    cmdline.erase(std::remove(std::prev(cmdline.end()), cmdline.end(), '\0'), cmdline.end());
-
-    return cmdline;
 }

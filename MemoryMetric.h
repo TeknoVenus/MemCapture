@@ -26,6 +26,7 @@
 #include <map>
 #include <mutex>
 #include "Platform.h"
+#include "GroupManager.h"
 
 #include "Procrank.h"
 #include "reportGenerators/ReportGeneratorFactory.h"
@@ -34,7 +35,8 @@
 class MemoryMetric : public IMetric
 {
 public:
-    MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory);
+    MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory,
+                 std::optional<std::shared_ptr<GroupManager>> groupManager);
 
     ~MemoryMetric();
 
@@ -56,6 +58,15 @@ private:
     void GetContainerMemoryUsage();
 
     void GetMemoryBandwidth();
+
+    void CalculateFragmentation();
+
+    // GPU measurements per platform
+    void GetGpuMemoryUsageBroadcom();
+
+    void GetGpuMemoryUsageAmlogic();
+
+    void GetGpuMemoryUsageRealtek();
 
 private:
     struct cmaMeasurement
@@ -95,6 +106,19 @@ private:
         double averageUsagePercent;
     };
 
+    struct gpuMeasurement
+    {
+        gpuMeasurement(Process _process, Measurement _used)
+                : ProcessInfo(std::move(_process)),
+                  Used(std::move(_used))
+        {
+
+        }
+
+        Process ProcessInfo;
+        Measurement Used;
+    };
+
     std::thread mCollectionThread;
     bool mQuit;
     std::condition_variable mCv;
@@ -104,21 +128,7 @@ private:
 
     std::map<std::string, cmaMeasurement> mCmaMeasurements;
     std::map<std::string, Measurement> mLinuxMemoryMeasurements;
-
-    struct gpuMeasurement
-    {
-        gpuMeasurement(std::string _containerName, Measurement &_used)
-                : containerName(std::move(_containerName)),
-                  Used(std::move(_used))
-        {
-
-        }
-
-        std::string containerName;
-        Measurement Used;
-    };
     std::map<pid_t, gpuMeasurement> mGpuMeasurements;
-
     std::map<std::string, Measurement> mContainerMeasurements;
 
     Measurement mCmaFree;
@@ -135,8 +145,6 @@ private:
 
     std::map<std::string, std::string> mCmaNames;
 
-    void CalculateFragmentation();
-    void GetGpuMemoryUsageBroadcom();
-
     std::shared_ptr<ReportGeneratorFactory> mReportGeneratorFactory;
+    std::optional<std::shared_ptr<GroupManager>> mGroupManager;
 };

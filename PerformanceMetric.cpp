@@ -21,10 +21,7 @@
 #include <thread>
 #include <fstream>
 #include <filesystem>
-#include <tabulate/table.hpp>
 #include <stdio.h>
-
-#include "Utils.h"
 
 PerformanceMetric::PerformanceMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory)
         : mQuit(false),

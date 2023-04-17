@@ -19,12 +19,16 @@
 
 #include <unistd.h>
 #include <getopt.h>
+#include <fstream>
+#include <optional>
 
 #include "Platform.h"
 #include "Log.h"
 #include "ProcessMetric.h"
 #include "MemoryMetric.h"
 #include "PerformanceMetric.h"
+
+#include "GroupManager.h"
 
 #include "reportGenerators/ReportGeneratorFactory.h"
 
@@ -33,6 +37,9 @@ static Platform gPlatform = Platform::AMLOGIC;
 
 // Default to save in current directory if not specified (will create timestamped subdir anyway)
 static std::filesystem::path gOutputDirectory = std::filesystem::current_path();
+
+bool gEnableGroups = false;
+static std::filesystem::path gGroupsFile;
 
 static ReportGeneratorFactory::ReportType gReportType = ReportGeneratorFactory::ReportType::TABLE;
 
@@ -45,6 +52,7 @@ static void displayUsage()
     printf("    -r, --report        Type of report to generate. Supported options = ['CSV', 'TABLE']. Defaults to TABLE\n");
     printf("    -d, --duration      Amount of time (in seconds) to capture data for. Default 30 seconds\n");
     printf("    -p, --platform      Platform we're running on. Supported options = ['AMLOGIC', 'REALTEK', 'BROADCOM']. Defaults to Amlogic\n");
+    printf("    -g, --groups        Path to JSON file containing the group mappings (optional)\n");
 }
 
 static void parseArgs(const int argc, char **argv)
@@ -55,6 +63,7 @@ static void parseArgs(const int argc, char **argv)
             {"platform",   required_argument, nullptr, (int) 'p'},
             {"output-dir", required_argument, nullptr, (int) 'o'},
             {"report",     required_argument, nullptr, (int) 'r'},
+            {"groups",     required_argument, nullptr, (int) 'g'},
             {nullptr, 0,                      nullptr, 0}
     };
 
@@ -63,7 +72,7 @@ static void parseArgs(const int argc, char **argv)
     int option;
     int longindex;
 
-    while ((option = getopt_long(argc, argv, "hd:p:o:r:", longopts, &longindex)) != -1) {
+    while ((option = getopt_long(argc, argv, "hd:p:o:r:g:", longopts, &longindex)) != -1) {
         switch (option) {
             case 'h':
                 displayUsage();
@@ -93,6 +102,11 @@ static void parseArgs(const int argc, char **argv)
             }
             case 'o': {
                 gOutputDirectory = std::filesystem::path(optarg);
+                break;
+            }
+            case 'g': {
+                gEnableGroups = true;
+                gGroupsFile = std::filesystem::path(optarg);
                 break;
             }
             case 'r': {
@@ -140,7 +154,6 @@ int main(int argc, char *argv[])
     std::stringstream datetime;
     datetime << std::put_time(std::localtime(&timestamp), "%F:%T");
 
-
     auto timestampDirectory = gOutputDirectory / datetime.str();
     try {
         std::filesystem::create_directories(timestampDirectory);
@@ -155,9 +168,24 @@ int main(int argc, char *argv[])
     // Select a report generator to save the results (e.g. table, csv...)
     auto reportGenerator = std::make_shared<ReportGeneratorFactory>(gReportType, timestampDirectory);
 
+    std::optional<std::shared_ptr<GroupManager>> groupManager = std::nullopt;
+    if (gEnableGroups) {
+        std::ifstream groupsFile(gGroupsFile);
+        if (!groupsFile) {
+            LOG_ERROR("Invalid groups file %s", gGroupsFile.string().c_str());
+        } else {
+            try {
+                auto groupsJson = nlohmann::json::parse(groupsFile);
+                groupManager = std::make_shared<GroupManager>(groupsJson);
+            } catch (nlohmann::json::exception &e) {
+                LOG_ERROR("Failed to parse groups JSON with error %s", e.what());
+            }
+        }
+    }
+
     // Create all our metrics
-    ProcessMetric processMetric(reportGenerator);
-    MemoryMetric memoryMetric(gPlatform, reportGenerator);
+    ProcessMetric processMetric(reportGenerator, groupManager);
+    MemoryMetric memoryMetric(gPlatform, reportGenerator, groupManager);
     PerformanceMetric performanceMetric(gPlatform, reportGenerator);
 
     // Start data collection

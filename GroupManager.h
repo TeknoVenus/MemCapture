@@ -19,42 +19,32 @@
 
 #pragma once
 
-#include "Log.h"
-#include "Measurement.h"
-
-extern "C" {
-#include "pagemap/pagemap.h"
-}
-
-#include <utility>
-#include <vector>
+#include "nlohmann/json.hpp"
 #include <string>
-#include "Process.h"
+#include <vector>
+#include <map>
+#include <optional>
+#include "Group.h"
 
-class Procrank
+
+/**
+ * Store the groups loaded from the provided JSON file at MemCapture launch and determine which group processes belong to
+ * based on their name
+ */
+class GroupManager
 {
 public:
-    struct ProcessMemoryUsage
+    enum class groupType
     {
-    public:
-        explicit ProcessMemoryUsage(Process p) : process(std::move(p))
-        {
-
-        }
-
-        Process process;
-        pm_memusage_t memoryUsage{};
+        PROCESS,
+        CONTAINER
     };
 
-public:
-    Procrank();
+    explicit GroupManager(nlohmann::json groupList);
 
-    ~Procrank();
-
-    std::vector<ProcessMemoryUsage> GetMemoryUsage() const;
+    std::optional<std::string> getGroup(groupType type, const std::string& name);
 
 private:
-    pm_kernel_t *mKernel;
-
-    std::vector<Measurement> mMeasurements;
+    std::vector<Group> mProcessGroups;
+    std::vector<Group> mContainerGroups;
 };

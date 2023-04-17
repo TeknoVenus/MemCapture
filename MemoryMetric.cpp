@@ -24,9 +24,7 @@
 #include <tabulate/table.hpp>
 #include <cmath>
 
-#include "Utils.h"
-
-MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory)
+MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory, std::optional<std::shared_ptr<GroupManager>> groupManager)
         : mQuit(false),
           mCv(),
           mLinuxMemoryMeasurements{},
@@ -35,7 +33,8 @@ MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFac
           mMemoryBandwidth({0, 0, 0, 0}),
           mMemoryFragmentation{},
           mPlatform(platform),
-          mReportGeneratorFactory(std::move(reportGeneratorFactory))
+          mReportGeneratorFactory(std::move(reportGeneratorFactory)),
+          mGroupManager(std::move(groupManager))
 {
 
     // Some metrics are returned as a number of pages instead of bytes, so get page size to be able to calculate
@@ -206,14 +205,22 @@ void MemoryMetric::PrintResults()
     // *** GPU Memory Usage ***
     if (mGPUMemorySupported) {
         auto gpuResults = mReportGeneratorFactory->getReportGenerator("GPU Memory",
-                                                                      {"PID", "Process", "Container", "Min_KB",
+                                                                      {"PID", "Process", "Group", "Container", "Cmdline", "Min_KB",
                                                                        "Max_KB", "Average_KB"});
 
         for (const auto &result: mGpuMeasurements) {
+            std::optional<std::string> group = std::nullopt;
+            if (mGroupManager.has_value())
+            {
+                group = result.second.ProcessInfo.group(mGroupManager.value());
+            }
+
             gpuResults->addRow({
                                        std::to_string(result.first),
-                                       result.second.Used.GetName(),
-                                       result.second.containerName,
+                                       result.second.ProcessInfo.name(),
+                                       group.has_value() ? group.value() : "Unknown",
+                                       result.second.ProcessInfo.container().has_value() ? result.second.ProcessInfo.container().value() : "-",
+                                       result.second.ProcessInfo.cmdline(),
                                        std::to_string(result.second.Used.GetMinRounded()),
                                        std::to_string(result.second.Used.GetMaxRounded()),
                                        std::to_string(result.second.Used.GetAverageRounded()),
@@ -294,8 +301,11 @@ void MemoryMetric::PrintResults()
     for (const auto &memoryZone: mMemoryFragmentation) {
         std::string reportName = "Memory Fragmentation - Zone " + memoryZone.first;
         auto memoryFragmentation = mReportGeneratorFactory->getReportGenerator(reportName,
-                                                                               {"Order", "Min_Free_Pages", "Max_Free_Pages", "Average_Free_Pages", "Min_Fragmentation_%",
-                                                                                "Max_Fragmentation_%", "Average_Fragmentation_%"});
+                                                                               {"Order", "Min_Free_Pages",
+                                                                                "Max_Free_Pages", "Average_Free_Pages",
+                                                                                "Min_Fragmentation_%",
+                                                                                "Max_Fragmentation_%",
+                                                                                "Average_Fragmentation_%"});
 
         int i = 0;
         for (const auto &measurement: memoryZone.second) {
@@ -316,7 +326,7 @@ void MemoryMetric::PrintResults()
 
 void MemoryMetric::GetLinuxMemoryUsage()
 {
-    LOG_INFO("Getting memory usage");
+    //LOG_INFO("Getting memory usage");
 
     // Read memory data from /proc/meminfo and process
     std::ifstream meminfo("/proc/meminfo");
@@ -379,7 +389,7 @@ void MemoryMetric::GetLinuxMemoryUsage()
 
 void MemoryMetric::GetCmaMemoryUsage()
 {
-    LOG_INFO("Getting CMA memory usage");
+    //LOG_INFO("Getting CMA memory usage");
 
     long double countKb = 0;
     long double usedKb = 0;
@@ -471,106 +481,28 @@ void MemoryMetric::GetCmaMemoryUsage()
 void MemoryMetric::GetGpuMemoryUsage()
 {
     if (mGPUMemorySupported) {
-        LOG_INFO("Getting GPU memory usage");
+        //LOG_INFO("Getting GPU memory usage");
 
-        if (mPlatform == Platform::AMLOGIC || mPlatform == Platform::REALTEK) {
-            // Mali GPUs report memory usage on a per PID basis
-            std::ifstream gpuMem("/sys/kernel/debug/mali0/gpu_memory");
-
-            if (!gpuMem) {
-                LOG_WARN("Could not open gpu_memory file");
-                return;
+        switch (mPlatform) {
+            case (Platform::AMLOGIC): {
+                GetGpuMemoryUsageAmlogic();
+                break;
             }
-
-            std::string line;
-            long gpuPages;
-            pid_t pid;
-
-            // The format of the file changes between Amlogic and Realtek
-            if (mPlatform == Platform::AMLOGIC) {
-                // Amlogic example
-                /* root@sky-llama-panel:~# cat /sys/kernel/debug/mali0/gpu_memory
-                    mali0            total used_pages      25939
-                    ----------------------------------------------------
-                    kctx             pid              used_pages
-                    ----------------------------------------------------
-                    f1dbf000      14880       4558
-                    f1c19000      14438        135
-                    f1bb1000      14292      16359
-                    f18c0000      10899       4887
-                */
-                while (std::getline(gpuMem, line)) {
-                    if (sscanf(line.c_str(), "%*x %d %ld", &pid, &gpuPages) != 0) {
-                        unsigned long gpuBytes = gpuPages * mPageSize;
-
-                        auto itr = mGpuMeasurements.find(pid);
-
-                        if (itr != mGpuMeasurements.end()) {
-                            // Already got a measurement for this PID
-                            auto &measurement = itr->second;
-                            measurement.Used.AddDataPoint(gpuBytes / (long double) 1024.0);
-                        } else {
-                            // Get container name (if any)
-                            std::string containerName = Utils::getContainerName(pid);
-
-                            std::string processName;
-                            Procrank::GetProcessName(pid, processName);
-
-                            Measurement used(processName);
-                            used.AddDataPoint(gpuBytes / (long double) 1024.0);
-
-                            auto measurement = gpuMeasurement(containerName, used);
-                            mGpuMeasurements.insert(std::make_pair(pid, measurement));
-                        }
-                    }
-                }
-            } else if (mPlatform == Platform::REALTEK) {
-                // Realtek example
-                // First column = pages, second column = PID
-                /* root@skyxione:/sys/kernel/debug/mali0# cat gpu_memory
-                mali0                  45605
-                kctx-0xfa847000      14102      15898
-                kctx-0xf7953000         42      15833
-                kctx-0xff0b0000       3316       9134
-                kctx-0xfec18000      20929       8344
-                kctx-0xfb9df000        135       6235
-                kctx-0xfb12e000       7081       4962
-                */
-                while (std::getline(gpuMem, line)) {
-                    if (sscanf(line.c_str(), "  kctx-0x%*x %ld %d", &gpuPages, &pid) != 0) {
-                        unsigned long gpuBytes = gpuPages * mPageSize;
-
-                        auto itr = mGpuMeasurements.find(pid);
-
-                        if (itr != mGpuMeasurements.end()) {
-                            // Already got a measurement for this PID
-                            auto &measurement = itr->second;
-                            measurement.Used.AddDataPoint(gpuBytes / (long double) 1024.0);
-                        } else {
-                            // Get container name (if any)
-                            std::string containerName = Utils::getContainerName(pid);
-
-                            std::string processName;
-                            Procrank::GetProcessName(pid, processName);
-
-                            Measurement used(processName);
-                            used.AddDataPoint(gpuBytes / (long double) 1024.0);
-
-                            auto measurement = gpuMeasurement(containerName, used);
-                            mGpuMeasurements.insert(std::make_pair(pid, measurement));
-                        }
-                    }
-                }
+            case (Platform::REALTEK): {
+                GetGpuMemoryUsageRealtek();
+                break;
             }
-        } else if (mPlatform == Platform::BROADCOM) {
-            GetGpuMemoryUsageBroadcom();
+            case (Platform::BROADCOM): {
+                GetGpuMemoryUsageBroadcom();
+                break;
+            }
         }
     }
 }
 
 void MemoryMetric::GetContainerMemoryUsage()
 {
-    LOG_INFO("Getting Container memory usage");
+    //LOG_INFO("Getting Container memory usage");
 
     long double memoryUsageKb = 0;
     // List of system containers which we are not interested in.
@@ -614,7 +546,7 @@ void MemoryMetric::GetMemoryBandwidth()
 {
     // Only supported on Amlogic
     if (mMemoryBandwidthSupported) {
-        LOG_INFO("Getting memory bandwidth usage");
+        //LOG_INFO("Getting memory bandwidth usage");
 
         if (mPlatform == Platform::AMLOGIC) {
             std::ifstream memBandwidthFile("/sys/class/aml_ddr/usage_stat");
@@ -651,7 +583,7 @@ void MemoryMetric::GetMemoryBandwidth()
 
 void MemoryMetric::CalculateFragmentation()
 {
-    LOG_INFO("Getting memory fragmentation");
+    //LOG_INFO("Getting memory fragmentation");
 
     std::ifstream buddyInfo("/proc/buddyinfo");
 
@@ -789,12 +721,14 @@ void MemoryMetric::GetGpuMemoryUsageBroadcom()
                 // Not interested in this directory.
                 continue;
             }
+
             std::string pathStr = std::string("/sys/kernel/debug/dri/0/") + entryStr + "/client";
             std::ifstream gpuMem(pathStr.c_str());
             if (!gpuMem) {
                 LOG_WARN("Could not open gpu_memory file");
                 continue;
             }
+
             while (std::getline(gpuMem, line)) {
                 char processName[32];
                 unsigned int objectsNum;
@@ -828,18 +762,116 @@ void MemoryMetric::GetGpuMemoryUsageBroadcom()
                         auto &measurement = itr->second;
                         measurement.Used.AddDataPoint(virtualMemNumBytes / (long double) 1024.0);
                     } else {
-                        std::string containerName = Utils::getContainerName(pid);
-
-                        std::string fullProcessName;
-                        Procrank::GetProcessName(pid, fullProcessName);
-
-                        Measurement used(fullProcessName);
+                        Process process(pid);
+                        Measurement used(process.name());
                         used.AddDataPoint(virtualMemNumBytes / (long double) 1024.0);
 
-                        auto measurement = gpuMeasurement(containerName, used);
+                        auto measurement = gpuMeasurement(process, used);
                         mGpuMeasurements.insert(std::make_pair(pid, measurement));
                     }
                 }
+            }
+        }
+    }
+}
+
+/* Amlogic GPU memory allocations
+ *
+ * Sizes are in pages, so convert to bytes
+ *
+ * root@sky-llama-panel:~# cat /sys/kernel/debug/mali0/gpu_memory
+    mali0            total used_pages      25939
+    ----------------------------------------------------
+    kctx             pid              used_pages
+    ----------------------------------------------------
+    f1dbf000      14880       4558
+    f1c19000      14438        135
+    f1bb1000      14292      16359
+    f18c0000      10899       4887
+*/
+void MemoryMetric::GetGpuMemoryUsageAmlogic()
+{
+    std::ifstream gpuMem("/sys/kernel/debug/mali0/gpu_memory");
+
+    if (!gpuMem) {
+        LOG_WARN("Could not open gpu_memory file");
+        return;
+    }
+
+    std::string line;
+    long gpuPages;
+    pid_t pid;
+
+    while (std::getline(gpuMem, line)) {
+        if (sscanf(line.c_str(), "%*x %d %ld", &pid, &gpuPages) != 0) {
+            unsigned long gpuBytes = gpuPages * mPageSize;
+
+            auto itr = mGpuMeasurements.find(pid);
+
+            if (itr != mGpuMeasurements.end()) {
+                // Already got a measurement for this PID
+                auto &measurement = itr->second;
+                measurement.Used.AddDataPoint(gpuBytes / (long double) 1024.0);
+            } else {
+                Process process(pid);
+
+                Measurement used(process.name());
+                used.AddDataPoint(gpuBytes / (long double) 1024.0);
+
+                auto measurement = gpuMeasurement(process, used);
+                mGpuMeasurements.insert(std::make_pair(pid, measurement));
+            }
+        }
+    }
+}
+
+
+/* Realtek GPU memory allocations
+ *
+ * Uses a similar format to Amlogic but rendered slightly differently
+ *
+ * Sizes are in pages, so convert to bytes
+ * root@skyxione:/sys/kernel/debug/mali0# cat gpu_memory
+ *
+ * mali0                  45605
+ * kctx-0xfa847000      14102      15898
+ * kctx-0xf7953000         42      15833
+ * kctx-0xff0b0000       3316       9134
+ * kctx-0xfec18000      20929       8344
+ * kctx-0xfb9df000        135       6235
+ * kctx-0xfb12e000       7081       4962
+*/
+void MemoryMetric::GetGpuMemoryUsageRealtek()
+{
+    std::ifstream gpuMem("/sys/kernel/debug/mali0/gpu_memory");
+
+    if (!gpuMem) {
+        LOG_WARN("Could not open gpu_memory file");
+        return;
+    }
+
+    std::string line;
+    long gpuPages;
+    pid_t pid;
+
+    while (std::getline(gpuMem, line)) {
+        if (sscanf(line.c_str(), "  kctx-0x%*x %ld %d", &gpuPages, &pid) != 0) {
+            unsigned long gpuBytes = gpuPages * mPageSize;
+
+            auto itr = mGpuMeasurements.find(pid);
+
+            if (itr != mGpuMeasurements.end()) {
+                // Already got a measurement for this PID
+                auto &measurement = itr->second;
+                measurement.Used.AddDataPoint(gpuBytes / (long double) 1024.0);
+            } else {
+                Process process(pid);
+
+                Measurement used(process.name());
+                used.AddDataPoint(gpuBytes / (long double) 1024.0);
+
+                auto measurement = gpuMeasurement(process, used);
+                mGpuMeasurements.insert(std::make_pair(pid, measurement));
             }
         }
     }

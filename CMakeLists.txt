@@ -31,6 +31,8 @@ add_executable(${PROJECT_NAME}
         main.cpp
         Measurement.cpp
         Procrank.cpp
+        GroupManager.cpp
+        Process.cpp
 
         reportGenerators/TableReportGenerator.cpp
         reportGenerators/CsvReportGenerator.cpp

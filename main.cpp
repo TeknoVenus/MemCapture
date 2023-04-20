@@ -170,6 +170,7 @@ int main(int argc, char *argv[])
 
     std::optional<std::shared_ptr<GroupManager>> groupManager = std::nullopt;
     if (gEnableGroups) {
+        LOG_INFO("Loading groups from %s", std::filesystem::absolute(gGroupsFile).string().c_str());
         std::ifstream groupsFile(gGroupsFile);
         if (!groupsFile) {
             LOG_ERROR("Invalid groups file %s", gGroupsFile.string().c_str());

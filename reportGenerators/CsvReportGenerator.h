@@ -34,6 +34,9 @@ public:
     void printReport() override;
 
 private:
+    std::string sanitise(const std::string& str);
+
+private:
     const std::filesystem::path mOutputDirectory;
     const std::string mReportName;
     std::vector<std::string> mColumnNames;

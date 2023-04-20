@@ -18,7 +18,7 @@
 */
 
 #include "CsvReportGenerator.h"
-
+#include <algorithm>
 #include <fstream>
 
 /**
@@ -61,7 +61,10 @@ void CsvReportGenerator::printReport()
     // Data
     for (const auto &row: mRows) {
         for (const auto &col: row) {
-            csvFile << '"' << col << '"';
+            // Strip new-lines from the data
+            csvFile << '"' << sanitise(col) << '"';
+
+            // Don't add comma on final item
             if (&col != &row.back()) {
                 csvFile << ",";
             }
@@ -69,4 +72,19 @@ void CsvReportGenerator::printReport()
 
         csvFile << "\n";
     }
+}
+
+std::string CsvReportGenerator::sanitise(const std::string &str)
+{
+    // Remove new lines
+    std::string tmp(str);
+    tmp.erase(std::remove(tmp.begin(), tmp.end(), '\n'), tmp.cend());
+
+    // If string starts with =, erase = to avoid Excel treating as a formula
+    if (tmp.rfind('=', 0) == 0)
+    {
+        tmp.erase(0, 1);
+    }
+
+    return tmp;
 }

@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
     } catch (std::filesystem::filesystem_error &e) {
         LOG_ERROR("Failed to create directory %s to save results in: '%s'", timestampDirectory.string().c_str(),
                   e.what());
-        return 1;
+        return EXIT_FAILURE;
     }
 
     LOG_INFO("** About to start memory capture for %d seconds **", gDuration);
@@ -173,12 +173,14 @@ int main(int argc, char *argv[])
         std::ifstream groupsFile(gGroupsFile);
         if (!groupsFile) {
             LOG_ERROR("Invalid groups file %s", gGroupsFile.string().c_str());
+            return EXIT_FAILURE;
         } else {
             try {
                 auto groupsJson = nlohmann::json::parse(groupsFile);
                 groupManager = std::make_shared<GroupManager>(groupsJson);
             } catch (nlohmann::json::exception &e) {
                 LOG_ERROR("Failed to parse groups JSON with error %s", e.what());
+                return EXIT_FAILURE;
             }
         }
     }
@@ -209,5 +211,5 @@ int main(int argc, char *argv[])
 
     LOG_INFO("Saved report in %s", timestampDirectory.string().c_str());
 
-    return 0;
+    return EXIT_SUCCESS;
 }

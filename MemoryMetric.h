@@ -59,6 +59,8 @@ private:
 
     void GetMemoryBandwidth();
 
+    void GetBroadcomBmemUsage();
+
     void CalculateFragmentation();
 
     // GPU measurements per platform
@@ -67,6 +69,8 @@ private:
     void GetGpuMemoryUsageAmlogic();
 
     void GetGpuMemoryUsageRealtek();
+
+    pid_t tidToParentPid(pid_t tid);
 
 private:
     struct cmaMeasurement
@@ -130,6 +134,8 @@ private:
     std::map<std::string, Measurement> mLinuxMemoryMeasurements;
     std::map<pid_t, gpuMeasurement> mGpuMeasurements;
     std::map<std::string, Measurement> mContainerMeasurements;
+
+    std::vector<Measurement> mBroadcomBmemMeasurements;
 
     Measurement mCmaFree;
     Measurement mCmaBorrowed;

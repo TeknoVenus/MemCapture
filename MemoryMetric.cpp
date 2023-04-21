@@ -24,7 +24,8 @@
 #include <tabulate/table.hpp>
 #include <cmath>
 
-MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory, std::optional<std::shared_ptr<GroupManager>> groupManager)
+MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory,
+                           std::optional<std::shared_ptr<GroupManager>> groupManager)
         : mQuit(false),
           mCv(),
           mLinuxMemoryMeasurements{},
@@ -176,6 +177,10 @@ void MemoryMetric::CollectData(std::chrono::seconds frequency)
         GetMemoryBandwidth();
         CalculateFragmentation();
 
+        if (mPlatform == Platform::BROADCOM) {
+            GetBroadcomBmemUsage();
+        }
+
         auto end = std::chrono::high_resolution_clock::now();
         LOG_INFO("MemoryMetric completed in %lld us",
                  (long long) std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
@@ -205,13 +210,13 @@ void MemoryMetric::PrintResults()
     // *** GPU Memory Usage ***
     if (mGPUMemorySupported) {
         auto gpuResults = mReportGeneratorFactory->getReportGenerator("GPU Memory",
-                                                                      {"PID", "Process", "Group", "Container", "Cmdline", "Min_KB",
+                                                                      {"PID", "Process", "Group", "Container",
+                                                                       "Cmdline", "Min_KB",
                                                                        "Max_KB", "Average_KB"});
 
         for (const auto &result: mGpuMeasurements) {
             std::optional<std::string> group = std::nullopt;
-            if (mGroupManager.has_value())
-            {
+            if (mGroupManager.has_value()) {
                 group = result.second.ProcessInfo.group(mGroupManager.value());
             }
 
@@ -219,7 +224,8 @@ void MemoryMetric::PrintResults()
                                        std::to_string(result.first),
                                        result.second.ProcessInfo.name(),
                                        group.has_value() ? group.value() : "Unknown",
-                                       result.second.ProcessInfo.container().has_value() ? result.second.ProcessInfo.container().value() : "-",
+                                       result.second.ProcessInfo.container().has_value()
+                                       ? result.second.ProcessInfo.container().value() : "-",
                                        result.second.ProcessInfo.cmdline(),
                                        std::to_string(result.second.Used.GetMinRounded()),
                                        std::to_string(result.second.Used.GetMaxRounded()),
@@ -321,6 +327,23 @@ void MemoryMetric::PrintResults()
             i++;
         }
         memoryFragmentation->printReport();
+    }
+
+    // *** Broadcom BMEM (if applicable) ***
+    if (mPlatform == Platform::BROADCOM) {
+        auto bmemReport = mReportGeneratorFactory->getReportGenerator("BMEM", {"Region", "Min_Usage_KB", "Max_Usage_KB",
+                                                                               "Average_Usage_KB"});
+
+        for (const auto &measurement: mBroadcomBmemMeasurements) {
+            bmemReport->addRow({
+                                       measurement.GetName(),
+                                       std::to_string(measurement.GetMinRounded()),
+                                       std::to_string(measurement.GetMaxRounded()),
+                                       std::to_string(measurement.GetAverageRounded())
+                               });
+        }
+
+        bmemReport->printReport();
     }
 }
 
@@ -577,9 +600,50 @@ void MemoryMetric::GetMemoryBandwidth()
         }
 
     }
-
-
 }
+
+void MemoryMetric::GetBroadcomBmemUsage()
+{
+    // LOG_INFO("Getting BMEM Usage");
+
+    std::ifstream broadcomCoreInfo("/proc/brcm/core");
+
+    if (!broadcomCoreInfo) {
+        LOG_WARN("Could not open /proc/brcm/core");
+        return;
+    }
+
+    std::string line;
+
+    char regionName[128];
+    int regionSize;
+    int regionUsage;
+    while (std::getline(broadcomCoreInfo, line)) {
+        if (sscanf(line.c_str(), "%*d  %*s %*d %*s   %d %*s %d%% %*d%% %s", &regionSize, &regionUsage,
+                   regionName) == 3) {
+            // Calculate how many MB we're using since Bcom in their infinite wisdom only give us a percentage
+            // Use KB for consistency with everything else
+            double usageKb = (regionSize * (regionUsage / 100.0)) * 1024;
+
+            auto itr = std::find_if(mBroadcomBmemMeasurements.begin(), mBroadcomBmemMeasurements.end(),
+                                    [&](const Measurement &m)
+                                    {
+                                        return m.GetName() == std::string(regionName);
+                                    });
+
+            if (itr == mBroadcomBmemMeasurements.end()) {
+                // New region
+                Measurement measurement(regionName);
+                measurement.AddDataPoint(usageKb);
+                mBroadcomBmemMeasurements.emplace_back(measurement);
+            } else {
+                auto &measurement = *itr;
+                measurement.AddDataPoint(usageKb);
+            }
+        }
+    }
+}
+
 
 void MemoryMetric::CalculateFragmentation()
 {
@@ -692,9 +756,9 @@ void MemoryMetric::CalculateFragmentation()
  * /sys/kernel/debug/dri/0/7566-000000003bfb5b6e/client
  * root@xione-sercomm:~# 
  *
- * Each directory under /sys/kernel/debug/dri/0/ is of the form '<pid>-<64bit hex>'.
+ * Each directory under /sys/kernel/debug/dri/0/ is of the form '<tid>-<64bit hex>'.
  *
- * pid is the process id of the process that allocated the gpu mem, the allocation being detailed in the 'client' file under that directory.
+ * tid is the thread id of the thread that allocated the gpu mem, the allocation being detailed in the 'client' file under that directory.
  * Not sure what the 64 bit hex is. An address?
  *
  * Example content of a 'client' file:
@@ -702,22 +766,22 @@ void MemoryMetric::CalculateFragmentation()
  * root@xione-sercomm:~# cat /sys/kernel/debug/dri/0/13449-00000000f601794d/client
  *             command objects    Virtual  SHM pages Huge Pages
  *     SkyBrowserLaunc       2     4096KB        0KB        4MB
- * root@xione-sercomm:~# 
+ * root@xione-sercomm:~#
+ *
+ * Need to correlate this TID to the main PID of the process to make analysis easier
  *
  * Note that the process name does not include full path so this is instead retrieved from Procrank using the pid extracted from the directory name.
 */
 void MemoryMetric::GetGpuMemoryUsageBroadcom()
 {
     std::string line;
-    pid_t pid;
+    pid_t tid;
 
     for (const auto &entry: std::filesystem::directory_iterator("/sys/kernel/debug/dri/0/")) {
         const auto entryStr = entry.path().filename().string();
         if (entry.is_directory()) {
             // Scan as far as we need to.
-            if (sscanf(entryStr.c_str(), "%d-", &pid) == 1) {
-                //LOG_INFO("Extracted pid %d from path %s", pid, entryStr.c_str());
-            } else {
+            if (sscanf(entryStr.c_str(), "%d-", &tid) != 1) {
                 // Not interested in this directory.
                 continue;
             }
@@ -725,7 +789,7 @@ void MemoryMetric::GetGpuMemoryUsageBroadcom()
             std::string pathStr = std::string("/sys/kernel/debug/dri/0/") + entryStr + "/client";
             std::ifstream gpuMem(pathStr.c_str());
             if (!gpuMem) {
-                LOG_WARN("Could not open gpu_memory file");
+                LOG_WARN("Could not open gpu_memory file %s", pathStr.c_str());
                 continue;
             }
 
@@ -754,6 +818,9 @@ void MemoryMetric::GetGpuMemoryUsageBroadcom()
                         LOG_WARN("Could not parse this line: \'%s\'", line.c_str());
                         continue;
                     }
+
+                    // Convert TID to parent PID (TGID) to make things easier to correlate later on
+                    pid_t pid = tidToParentPid(tid);
 
                     auto itr = mGpuMeasurements.find(pid);
 
@@ -875,4 +942,32 @@ void MemoryMetric::GetGpuMemoryUsageRealtek()
             }
         }
     }
+}
+
+/**
+ * Given a thread ID, return the main PID (TGID) the thread belongs to
+ * @return PID
+ */
+pid_t MemoryMetric::tidToParentPid(pid_t tid)
+{
+    std::string statusFilePath = "/proc/" + std::to_string(tid) + "/status";
+
+    std::ifstream statusFile(statusFilePath);
+
+    if (!statusFile) {
+        LOG_WARN("Failed to open file %s", statusFilePath.c_str());
+        return -1;
+    }
+
+    std::string line;
+    pid_t pid;
+
+    while (std::getline(statusFile, line)) {
+        if (sscanf(line.c_str(), "Tgid:\t%d", &pid) == 1) {
+            return pid;
+        }
+    }
+
+    // Failed to find Tgid in file, weird?
+    return -1;
 }

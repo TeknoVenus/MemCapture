@@ -46,7 +46,7 @@ public:
     std::string GetName() const;
 
 private:
-    const std::string mName;
+    std::string mName;
 
     int mCount;
     long double mMin;

@@ -39,10 +39,13 @@ public:
 
     bool operator==(const Process &rhs) const
     {
-        return mPid == rhs.mPid;
+        // On long captures there is a small chance we loop around PIDs and re-use the same PID again
+        return mPid == rhs.mPid && mCmdline == rhs.mCmdline;
     }
 
     pid_t pid() const;
+
+    pid_t ppid() const;
 
     std::string name() const;
 
@@ -54,7 +57,13 @@ public:
 
     std::optional<std::string> group(const std::shared_ptr<GroupManager> &groupManager) const;
 
+    bool isDead() const;
+
+    void updateAliveStatus();
+
 private:
+    pid_t getParentPid() const;
+
     std::string getName() const;
 
     std::string getCmdline() const;
@@ -69,6 +78,9 @@ private:
 
 private:
     pid_t mPid;
+    pid_t mPpid;
+
+    bool mDead;
 
     std::string mName;
     std::string mCmdline;

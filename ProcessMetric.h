@@ -62,13 +62,15 @@ public:
 private:
     void CollectData(std::chrono::seconds frequency);
 
+    void DeduplicateData();
+
 private:
     std::thread mCollectionThread;
     bool mQuit;
     std::condition_variable mCv;
     std::mutex mLock;
 
-    std::map<pid_t, processMeasurement> mMeasurements;
+    std::vector<processMeasurement> mMeasurements;
 
     const std::shared_ptr<ReportGeneratorFactory> mReportGeneratorFactory;
     const std::optional<std::shared_ptr<GroupManager>> mGroupManager;

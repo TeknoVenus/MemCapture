@@ -21,12 +21,14 @@
 #include <climits>
 #include "Log.h"
 #include <fstream>
+#include <sys/stat.h>
 
-Process::Process(pid_t pid) : mPid(pid)
+Process::Process(pid_t pid) : mPid(pid), mDead(false)
 {
     // Get and cache details about the process
     mName = getName();
     mCmdline = getCmdline();
+    mPpid = getParentPid();
 
     mContainer = getContainer();
     mSystemdService = getSystemdService();
@@ -40,6 +42,12 @@ pid_t Process::pid() const
 {
     return mPid;
 }
+
+pid_t Process::ppid() const
+{
+    return mPpid;
+}
+
 
 /**
  *
@@ -98,6 +106,38 @@ std::optional<std::string> Process::container() const
 }
 
 /**
+ *
+ * @return True if the process has died
+ */
+bool Process::isDead() const
+{
+    return mDead;
+}
+
+/**
+ * Check if the process is alive and update the dead/alive status
+ */
+void Process::updateAliveStatus()
+{
+    // Once dead, stay dead
+    if (mDead) {
+        return;
+    }
+
+    struct stat s{};
+
+    char procDir[PATH_MAX];
+    snprintf(procDir, PATH_MAX, "/proc/%d", mPid);
+
+    if (stat(procDir, &s) == -1 && errno == ENOENT) {
+        mDead = true;
+    } else {
+        mDead = false;
+    }
+}
+
+
+/**
  * Attempt to work out which group the process belongs to, using the provided groupmanager to resolve names -> groups
  *
  * @param groupManager Group manager containing loaded group definitions
@@ -132,6 +172,29 @@ std::optional<std::string> Process::group(const std::shared_ptr<GroupManager> &g
     // Couldn't work out what the group is
     return std::nullopt;
 }
+
+pid_t Process::getParentPid() const
+{
+    char procPath[PATH_MAX];
+    sprintf(procPath, "/proc/%u/status", mPid);
+
+    std::ifstream statusFile(procPath);
+
+    if (!statusFile) {
+        return {};
+    }
+
+    std::string line;
+    pid_t ppid;
+    while (std::getline(statusFile, line)) {
+        if (sscanf(line.c_str(), "PPid:\t%d", &ppid) == 1) {
+            return ppid;
+        }
+    }
+
+    return -1;
+}
+
 
 /**
  * Attempts to work out the name of the process
@@ -303,3 +366,7 @@ std::string Process::GetCgroupPathByCgroupControllerAndPid(const std::string &cg
 
     return cgrp_path;
 }
+
+
+
+

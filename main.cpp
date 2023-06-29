@@ -35,8 +35,8 @@
 static int gDuration = 30;
 static Platform gPlatform = Platform::AMLOGIC;
 
-// Default to save in current directory if not specified (will create timestamped subdir anyway)
-static std::filesystem::path gOutputDirectory = std::filesystem::current_path();
+// Default to save in current directory if not specified
+static std::filesystem::path gOutputDirectory = std::filesystem::current_path() / "MemCaptureReport";
 
 bool gEnableGroups = false;
 static std::filesystem::path gGroupsFile;
@@ -149,24 +149,19 @@ int main(int argc, char *argv[])
         LOG_WARN("Failed to set nice value");
     }
 
-    // Create directory to save results in with the current date/time
-    auto timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream datetime;
-    datetime << std::put_time(std::localtime(&timestamp), "%F:%T");
-
-    auto timestampDirectory = gOutputDirectory / datetime.str();
     try {
-        std::filesystem::create_directories(timestampDirectory);
+        std::filesystem::create_directories(gOutputDirectory);
     } catch (std::filesystem::filesystem_error &e) {
-        LOG_ERROR("Failed to create directory %s to save results in: '%s'", timestampDirectory.string().c_str(),
+        LOG_ERROR("Failed to create directory %s to save results in: '%s'", gOutputDirectory.string().c_str(),
                   e.what());
         return EXIT_FAILURE;
     }
 
     LOG_INFO("** About to start memory capture for %d seconds **", gDuration);
+    LOG_INFO("Will save report to %s", gOutputDirectory.string().c_str());
 
     // Select a report generator to save the results (e.g. table, csv...)
-    auto reportGenerator = std::make_shared<ReportGeneratorFactory>(gReportType, timestampDirectory);
+    auto reportGenerator = std::make_shared<ReportGeneratorFactory>(gReportType, gOutputDirectory);
 
     std::optional<std::shared_ptr<GroupManager>> groupManager = std::nullopt;
     if (gEnableGroups) {
@@ -210,7 +205,7 @@ int main(int argc, char *argv[])
     memoryMetric.PrintResults();
     performanceMetric.PrintResults();
 
-    LOG_INFO("Saved report in %s", timestampDirectory.string().c_str());
+    LOG_INFO("Saved report in %s", gOutputDirectory.string().c_str());
 
     return EXIT_SUCCESS;
 }

@@ -27,13 +27,13 @@
 #include <mutex>
 #include "Platform.h"
 #include "Procrank.h"
-#include "reportGenerators/ReportGeneratorFactory.h"
+#include "reportGenerators/JsonReportGenerator.h"
 
 
 class PerformanceMetric : public IMetric
 {
 public:
-    PerformanceMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory);
+    PerformanceMetric(Platform platform, std::shared_ptr<JsonReportGenerator> reportGenerator);
 
     ~PerformanceMetric();
 
@@ -41,7 +41,7 @@ public:
 
     void StopCollection() override;
 
-    void PrintResults() override;
+    void SaveResults() override;
 
 private:
     void CollectData(std::chrono::seconds frequency);
@@ -70,7 +70,7 @@ private:
     bool mAudioHalExists;
 
     const Platform mPlatform;
-    const std::shared_ptr<ReportGeneratorFactory> mReportGeneratorFactory;
+    const std::shared_ptr<JsonReportGenerator> mReportGenerator;
 
     bool mSupportedPlatform;
 

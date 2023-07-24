@@ -38,8 +38,12 @@ extern "C"
 #define LEVEL_WARN 1
 #define LEVEL_ERROR 0
 
+#ifndef NDEBUG
 #define LOG_DEBUG(fmt, ...) \
     __LOG(LEVEL_DEBUG, fmt, ##__VA_ARGS__)
+#else
+#define LOG_DEBUG(fmt, ...)
+#endif
 
 #define LOG_INFO(fmt, ...) \
     __LOG(LEVEL_INFO, fmt, ##__VA_ARGS__)

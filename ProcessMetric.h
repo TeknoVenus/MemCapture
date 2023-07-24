@@ -25,14 +25,14 @@
 #include <mutex>
 #include <utility>
 #include "GroupManager.h"
-#include "reportGenerators/ReportGeneratorFactory.h"
+#include "reportGenerators/JsonReportGenerator.h"
 #include "Procrank.h"
+#include "ProcessMeasurement.h"
 
 class ProcessMetric : public IMetric
 {
 public:
-    ProcessMetric(std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory,
-                  std::optional<std::shared_ptr<GroupManager>> groupManager);
+    ProcessMetric(std::shared_ptr<JsonReportGenerator> reportGenerator);
 
     ~ProcessMetric();
 
@@ -40,23 +40,7 @@ public:
 
     void StopCollection() override;
 
-    void PrintResults() override;
-
-    struct processMeasurement
-    {
-        processMeasurement(Process _process, Measurement _pss, Measurement _rss, Measurement _uss)
-                : ProcessInfo(std::move(_process)),
-                  Pss(std::move(_pss)),
-                  Rss(std::move(_rss)),
-                  Uss(std::move(_uss))
-        {
-        }
-
-        Process ProcessInfo;
-        Measurement Pss;
-        Measurement Rss;
-        Measurement Uss;
-    };
+    void SaveResults() override;
 
 
 private:
@@ -72,6 +56,5 @@ private:
 
     std::vector<processMeasurement> mMeasurements;
 
-    const std::shared_ptr<ReportGeneratorFactory> mReportGeneratorFactory;
-    const std::optional<std::shared_ptr<GroupManager>> mGroupManager;
+    const std::shared_ptr<JsonReportGenerator> mReportGenerator;
 };

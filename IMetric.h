@@ -47,7 +47,7 @@ public:
      *
      * Expected to format results ina table
      */
-    virtual void PrintResults() = 0;
+    virtual void SaveResults() = 0;
 };
 
 

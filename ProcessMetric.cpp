@@ -21,12 +21,10 @@
 #include <algorithm>
 
 
-ProcessMetric::ProcessMetric(std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory,
-                             std::optional<std::shared_ptr<GroupManager>> groupManager)
+ProcessMetric::ProcessMetric(std::shared_ptr<JsonReportGenerator> reportGenerator)
         : mQuit(false),
           mCv(),
-          mReportGeneratorFactory(std::move(reportGeneratorFactory)),
-          mGroupManager(std::move(groupManager))
+          mReportGenerator(std::move(reportGenerator))
 {
 
 }
@@ -57,44 +55,18 @@ void ProcessMetric::StopCollection()
     }
 }
 
-void ProcessMetric::PrintResults()
+void ProcessMetric::SaveResults()
 {
     DeduplicateData();
+    mReportGenerator->addProcesses(mMeasurements);
 
-    std::vector<std::string> columns = {"PID", "Process", "Group", "Systemd Service", "Container", "Cmdline",
-                                        "Min_RSS_KB",
-                                        "Max_RSS_KB", "Average_RSS_KB", "Min_PSS_KB", "Max_PSS_KB", "Average_PSS_KB",
-                                        "Min_USS_KB", "Max_USS_KB", "Average_USS_KB"};
-    auto memoryResults = mReportGeneratorFactory->getReportGenerator("Process Memory", columns);
-
-    for (const auto &result: mMeasurements) {
-        std::optional<std::string> group = std::nullopt;
-        if (mGroupManager.has_value()) {
-            group = result.ProcessInfo.group(mGroupManager.value());
-        }
-
-        memoryResults->addRow({
-                                      std::to_string(result.ProcessInfo.pid()),
-                                      result.ProcessInfo.name(),
-                                      group.has_value() ? group.value() : "Unknown",
-                                      result.ProcessInfo.systemdService().has_value()
-                                      ? result.ProcessInfo.systemdService().value() : "-",
-                                      result.ProcessInfo.container().has_value()
-                                      ? result.ProcessInfo.container().value() : "-",
-                                      tabulate::Format::word_wrap(result.ProcessInfo.cmdline(), 200, "", false),
-                                      std::to_string(result.Rss.GetMinRounded()),
-                                      std::to_string(result.Rss.GetMaxRounded()),
-                                      std::to_string(result.Rss.GetAverageRounded()),
-                                      std::to_string(result.Pss.GetMinRounded()),
-                                      std::to_string(result.Pss.GetMaxRounded()),
-                                      std::to_string(result.Pss.GetAverageRounded()),
-                                      std::to_string(result.Uss.GetMinRounded()),
-                                      std::to_string(result.Uss.GetMaxRounded()),
-                                      std::to_string(result.Uss.GetAverageRounded()),
-                              });
-    }
-
-    memoryResults->printReport();
+    // Sum all PSS measurements and add to running total of system memory usage
+    auto pssSum = 0;
+    std::for_each(mMeasurements.begin(), mMeasurements.end(), [&](const processMeasurement &p)
+    {
+        pssSum += p.Pss.GetAverage();
+    });
+    mReportGenerator->addToAccumulatedMemoryUsage(pssSum);
 }
 
 void ProcessMetric::CollectData(const std::chrono::seconds frequency)

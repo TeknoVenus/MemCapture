@@ -23,7 +23,7 @@
 #include <filesystem>
 #include <stdio.h>
 
-PerformanceMetric::PerformanceMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory)
+PerformanceMetric::PerformanceMetric(Platform platform, std::shared_ptr<JsonReportGenerator> reportGenerator)
         : mQuit(false),
           mCv(),
           mAudioLatency("Audio Latency"),
@@ -31,7 +31,7 @@ PerformanceMetric::PerformanceMetric(Platform platform, std::shared_ptr<ReportGe
           mAvSessionInProgress(false),
           mAudioHalExists(false),
           mPlatform(platform),
-          mReportGeneratorFactory(std::move(reportGeneratorFactory)),
+          mReportGenerator(std::move(reportGenerator)),
           mSupportedPlatform(false)
 {
     if (mPlatform != Platform::AMLOGIC) {
@@ -98,9 +98,9 @@ void PerformanceMetric::CollectData(std::chrono::seconds frequency)
     LOG_INFO("Collection thread quit");
 }
 
-void PerformanceMetric::PrintResults()
+void PerformanceMetric::SaveResults()
 {
-    if (!mSupportedPlatform) {
+   /* if (!mSupportedPlatform) {
         return;
     }
 
@@ -128,7 +128,7 @@ void PerformanceMetric::PrintResults()
                                  std::to_string(mAudioLatency.GetAverage())
                                 });
         audioHalResults->printReport();
-    }
+    }*/
 }
 
 void PerformanceMetric::GetDecoderStats()

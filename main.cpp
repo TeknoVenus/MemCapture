@@ -27,10 +27,18 @@
 #include "ProcessMetric.h"
 #include "MemoryMetric.h"
 #include "PerformanceMetric.h"
-
+#include "Metadata.h"
 #include "GroupManager.h"
 
-#include "reportGenerators/ReportGeneratorFactory.h"
+#include "inja/inja.hpp"
+
+#define INCBIN_STYLE INCBIN_STYLE_SNAKE
+#define INCBIN_PREFIX g_
+#include <incbin.h>
+
+#include "reportGenerators/JsonReportGenerator.h"
+
+INCBIN(templateHtml, "./templates/template.html");
 
 static int gDuration = 30;
 static Platform gPlatform = Platform::AMLOGIC;
@@ -38,10 +46,10 @@ static Platform gPlatform = Platform::AMLOGIC;
 // Default to save in current directory if not specified
 static std::filesystem::path gOutputDirectory = std::filesystem::current_path() / "MemCaptureReport";
 
+static bool gJson = false;
+
 bool gEnableGroups = false;
 static std::filesystem::path gGroupsFile;
-
-static ReportGeneratorFactory::ReportType gReportType = ReportGeneratorFactory::ReportType::TABLE;
 
 static void displayUsage()
 {
@@ -49,7 +57,7 @@ static void displayUsage()
     printf("    Utility to capture memory statistics\n\n");
     printf("    -h, --help          Print this help and exit\n");
     printf("    -o, --output-dir    Directory to save results in\n");
-    printf("    -r, --report        Type of report to generate. Supported options = ['CSV', 'TABLE']. Defaults to TABLE\n");
+    printf("    -j, --json          Save data as JSON in addition to HTML report\n");
     printf("    -d, --duration      Amount of time (in seconds) to capture data for. Default 30 seconds\n");
     printf("    -p, --platform      Platform we're running on. Supported options = ['AMLOGIC', 'REALTEK', 'BROADCOM']. Defaults to Amlogic\n");
     printf("    -g, --groups        Path to JSON file containing the group mappings (optional)\n");
@@ -62,7 +70,7 @@ static void parseArgs(const int argc, char **argv)
             {"duration",   required_argument, nullptr, (int) 'd'},
             {"platform",   required_argument, nullptr, (int) 'p'},
             {"output-dir", required_argument, nullptr, (int) 'o'},
-            {"report",     required_argument, nullptr, (int) 'r'},
+            {"json",       no_argument, nullptr, (int) 'j'},
             {"groups",     required_argument, nullptr, (int) 'g'},
             {nullptr, 0,                      nullptr, 0}
     };
@@ -72,7 +80,7 @@ static void parseArgs(const int argc, char **argv)
     int option;
     int longindex;
 
-    while ((option = getopt_long(argc, argv, "hd:p:o:r:g:", longopts, &longindex)) != -1) {
+    while ((option = getopt_long(argc, argv, "hd:p:o:jg:", longopts, &longindex)) != -1) {
         switch (option) {
             case 'h':
                 displayUsage();
@@ -104,22 +112,13 @@ static void parseArgs(const int argc, char **argv)
                 gOutputDirectory = std::filesystem::path(optarg);
                 break;
             }
+            case 'j': {
+                gJson = true;
+                break;
+            }
             case 'g': {
                 gEnableGroups = true;
                 gGroupsFile = std::filesystem::path(optarg);
-                break;
-            }
-            case 'r': {
-                std::string reportType(optarg);
-
-                if (reportType == "CSV") {
-                    gReportType = ReportGeneratorFactory::ReportType::CSV;
-                } else if (reportType == "TABLE") {
-                    gReportType = ReportGeneratorFactory::ReportType::TABLE;
-                } else {
-                    fprintf(stderr, "Warning: Unsupported report type %s\n", reportType.c_str());
-                    exit(EXIT_FAILURE);
-                }
                 break;
             }
             case '?':
@@ -160,9 +159,7 @@ int main(int argc, char *argv[])
     LOG_INFO("** About to start memory capture for %d seconds **", gDuration);
     LOG_INFO("Will save report to %s", gOutputDirectory.string().c_str());
 
-    // Select a report generator to save the results (e.g. table, csv...)
-    auto reportGenerator = std::make_shared<ReportGeneratorFactory>(gReportType, gOutputDirectory);
-
+    // Load groups JSON if provided
     std::optional<std::shared_ptr<GroupManager>> groupManager = std::nullopt;
     if (gEnableGroups) {
         LOG_INFO("Loading groups from %s", std::filesystem::absolute(gGroupsFile).string().c_str());
@@ -181,9 +178,12 @@ int main(int argc, char *argv[])
         }
     }
 
+    Metadata metadata(gDuration);
+    auto reportGenerator = std::make_shared<JsonReportGenerator>(metadata, groupManager);
+
     // Create all our metrics
-    ProcessMetric processMetric(reportGenerator, groupManager);
-    MemoryMetric memoryMetric(gPlatform, reportGenerator, groupManager);
+    ProcessMetric processMetric(reportGenerator);
+    MemoryMetric memoryMetric(gPlatform, reportGenerator);
     PerformanceMetric performanceMetric(gPlatform, reportGenerator);
 
     // Start data collection
@@ -195,17 +195,36 @@ int main(int argc, char *argv[])
     // Block main thread for the collection duration
     std::this_thread::sleep_for(std::chrono::seconds(gDuration));
 
+    LOG_INFO("Stopping after %d seconds", gDuration);
+
     // Done! Stop data collection
     processMetric.StopCollection();
     memoryMetric.StopCollection();
     performanceMetric.StopCollection();
 
-    // Print results to stdout
-    processMetric.PrintResults();
-    memoryMetric.PrintResults();
-    performanceMetric.PrintResults();
+    // Save results
+    processMetric.SaveResults();
+    memoryMetric.SaveResults();
+    performanceMetric.SaveResults();
 
-    LOG_INFO("Saved report in %s", gOutputDirectory.string().c_str());
+    // Build report
+    inja::Environment env;
+    auto htmlTemplateString = std::string(g_templateHtml_data, g_templateHtml_data + g_templateHtml_size);
+    std::string result = env.render(htmlTemplateString, reportGenerator->getJson());
+
+    std::filesystem::path htmlFilepath = gOutputDirectory / "report.html";
+    std::ofstream outputHtml(htmlFilepath, std::ios::trunc | std::ios::binary);
+    outputHtml << result;
+
+    LOG_INFO("Saved report to %s", htmlFilepath.string().c_str());
+
+    if (gJson) {
+        std::filesystem::path jsonFilepath = gOutputDirectory / "report.json";
+        std::ofstream outputJson(jsonFilepath, std::ios::trunc | std::ios::binary);
+        outputJson << reportGenerator->getJson().dump(4);
+
+        LOG_INFO("Saved JSON data to %s", jsonFilepath.string().c_str());
+    }
 
     return EXIT_SUCCESS;
 }

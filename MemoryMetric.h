@@ -29,14 +29,13 @@
 #include "GroupManager.h"
 
 #include "Procrank.h"
-#include "reportGenerators/ReportGeneratorFactory.h"
+#include "reportGenerators/JsonReportGenerator.h"
 
 
 class MemoryMetric : public IMetric
 {
 public:
-    MemoryMetric(Platform platform, std::shared_ptr<ReportGeneratorFactory> reportGeneratorFactory,
-                 std::optional<std::shared_ptr<GroupManager>> groupManager);
+    MemoryMetric(Platform platform, std::shared_ptr<JsonReportGenerator> reportGenerator);
 
     ~MemoryMetric();
 
@@ -44,7 +43,7 @@ public:
 
     void StopCollection() override;
 
-    void PrintResults() override;
+    void SaveResults() override;
 
 private:
     void CollectData(std::chrono::seconds frequency);
@@ -151,6 +150,5 @@ private:
 
     std::map<std::string, std::string> mCmaNames;
 
-    std::shared_ptr<ReportGeneratorFactory> mReportGeneratorFactory;
-    std::optional<std::shared_ptr<GroupManager>> mGroupManager;
+    std::shared_ptr<JsonReportGenerator> mReportGenerator;
 };

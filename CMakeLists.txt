@@ -33,14 +33,17 @@ add_executable(${PROJECT_NAME}
         Procrank.cpp
         GroupManager.cpp
         Process.cpp
+        Metadata.cpp
 
-        reportGenerators/TableReportGenerator.cpp
-        reportGenerators/CsvReportGenerator.cpp
+        reportGenerators/JsonReportGenerator.cpp
 
         ProcessMetric.cpp
         MemoryMetric.cpp
         PerformanceMetric.cpp
         )
+
+set_property( SOURCE main.cpp
+        APPEND PROPERTY OBJECT_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/templates/template.html" )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
         CXX_STANDARD 17
@@ -49,6 +52,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 target_include_directories(${PROJECT_NAME}
         PRIVATE
         3rdparty
+        .
         )
 
 target_link_libraries(${PROJECT_NAME}

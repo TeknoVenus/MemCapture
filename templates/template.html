@@ -129,6 +129,9 @@
                     <th style="max-width: 5rem;">USS Min (KB)</th>
                     <th style="max-width: 5rem;">USS Max (KB)</th>
                     <th style="max-width: 5rem;">USS Avg (KB)</th>
+                    <th style="max-width: 5rem;">Swap Min (KB)</th>
+                    <th style="max-width: 5rem;">Swap Max (KB)</th>
+                    <th style="max-width: 5rem;">Swap Avg (KB)</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -150,6 +153,9 @@
                     <td>{{ p.uss.min }}</td>
                     <td>{{ p.uss.max }}</td>
                     <td>{{ p.uss.average }}</td>
+                    <td>{{ p.swap.min }}</td>
+                    <td>{{ p.swap.max }}</td>
+                    <td>{{ p.swap.average }}</td>
                 </tr>
                 {% endfor %}
                 </tbody>
@@ -234,7 +240,6 @@
                 });
                 // @formatter:on
             </script>
-
             {% endfor %}
         </div>
     </div>
@@ -277,11 +282,11 @@
         },
         columnDefs: [
             {
-                targets: [7, 8, 9, 10, 11, 12, 13, 14, 15],
+                targets: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
                 render: $.fn.dataTable.render.number(',', '.', 0, '')
             },
             {
-                targets: [1, 6, 7, 8, 10, 11, 13, 14],
+                targets: [1, 6, 7, 8, 10, 11, 13, 14, 16, 17],
                 visible: false
             }
         ],

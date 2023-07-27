@@ -43,11 +43,14 @@ pid_t Process::pid() const
     return mPid;
 }
 
+/**
+ *
+ * @return Parent PID
+ */
 pid_t Process::ppid() const
 {
     return mPpid;
 }
-
 
 /**
  *
@@ -89,7 +92,6 @@ std::optional<std::string> Process::systemdService() const
 
     return mSystemdService;
 }
-
 
 /**
  *

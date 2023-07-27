@@ -336,8 +336,8 @@ bool run_procrank(uint64_t pgflags, uint64_t pgflags_mask, const std::set<pid_t>
             .total_zswap = 0,
             .show_oomadj = get_oomadj,
             .show_wss = get_wss,
-            .swap_enabled = false,
-            .zram_enabled = false,
+            .swap_enabled = true,
+            .zram_enabled = true,
             .zram_compression_ratio = 0.0,
     };
 

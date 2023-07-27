@@ -24,6 +24,7 @@
 #include "GroupManager.h"
 #include <memory>
 #include <optional>
+#include "Measurement.h"
 
 /**
  * Represent a running process on the system
@@ -60,7 +61,6 @@ public:
     bool isDead() const;
 
     void updateAliveStatus();
-
 private:
     pid_t getParentPid() const;
 

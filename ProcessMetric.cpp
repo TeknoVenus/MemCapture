@@ -90,26 +90,29 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
                 return m.ProcessInfo == procrankMeasurement.process;
             });
 
-            /*if (itr != mMeasurements.end()) {
+            if (itr != mMeasurements.end()) {
                 // Already got a measurement for this PID
                 auto &measurement = *itr;
-                measurement.Pss.AddDataPoint(procrankMeasurement.memoryUsage.pss / (long double) 1024.0);
-                measurement.Rss.AddDataPoint(procrankMeasurement.memoryUsage.rss / (long double) 1024.0);
-                measurement.Uss.AddDataPoint(procrankMeasurement.memoryUsage.uss / (long double) 1024.0);
+                measurement.Pss.AddDataPoint(procrankMeasurement.pss);
+                measurement.Rss.AddDataPoint(procrankMeasurement.rss);
+                measurement.Uss.AddDataPoint(procrankMeasurement.uss);
             } else {
                 // Store in KB
                 auto pss = Measurement("PSS");
-                pss.AddDataPoint(procrankMeasurement.memoryUsage.pss / (long double) 1024.0);
+                pss.AddDataPoint(procrankMeasurement.pss);
 
                 auto rss = Measurement("RSS");
-                rss.AddDataPoint(procrankMeasurement.memoryUsage.rss / (long double) 1024.0);
+                rss.AddDataPoint(procrankMeasurement.rss);
 
                 auto uss = Measurement("USS");
-                uss.AddDataPoint(procrankMeasurement.memoryUsage.uss / (long double) 1024.0);
+                uss.AddDataPoint(procrankMeasurement.uss);
 
-                processMeasurement measurement(procrankMeasurement.process, pss, rss, uss);
+                auto swap = Measurement("Swap");
+                swap.AddDataPoint(procrankMeasurement.swap);
+
+                processMeasurement measurement(procrankMeasurement.process, pss, rss, uss, swap);
                 mMeasurements.emplace_back(measurement);
-            }*/
+            }
         }
 
         // Update process dead/alive flag

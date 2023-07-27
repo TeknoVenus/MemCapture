@@ -120,6 +120,10 @@ void JsonReportGenerator::addProcesses(std::vector<processMeasurement> &processe
         processJson["uss"]["max"] = process.Uss.GetMaxRounded();
         processJson["uss"]["average"] = process.Uss.GetAverageRounded();
 
+        processJson["swap"]["min"] = process.Swap.GetMinRounded();
+        processJson["swap"]["max"] = process.Swap.GetMaxRounded();
+        processJson["swap"]["average"] = process.Swap.GetAverageRounded();
+
         mJson["processes"].emplace_back(processJson);
     }
 

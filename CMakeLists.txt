@@ -37,6 +37,9 @@ add_executable(${PROJECT_NAME}
         Process.cpp
         Metadata.cpp
 
+        FileParsers/MemInfo.cpp
+        FileParsers/Smaps.cpp
+
         JsonReportGenerator.cpp
 
         ProcessMetric.cpp

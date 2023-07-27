@@ -94,14 +94,12 @@ namespace android
             char path[32];
             snprintf(path, sizeof(path), "/proc/%d", tid);
 
-            int dirfd = open(path, O_DIRECTORY | O_RDONLY | O_CLOEXEC);
-            if (dirfd == -1) {
+            android::base::unique_fd dirfd(open(path, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
+            if (dirfd.get() == -1) {
                 return SetError(error, errno, "failed to open %s", path);
             }
 
-            bool success = GetProcessInfoFromProcPidFd(dirfd, tid, process_info, error);
-            close(dirfd);
-            return success;
+            return GetProcessInfoFromProcPidFd(dirfd.get(), tid, process_info, error);
         }
 
         static ProcessState parse_state(char state)

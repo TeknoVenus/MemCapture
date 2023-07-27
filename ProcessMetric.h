@@ -25,7 +25,7 @@
 #include <mutex>
 #include <utility>
 #include "GroupManager.h"
-#include "reportGenerators/JsonReportGenerator.h"
+#include "JsonReportGenerator.h"
 #include "Procrank.h"
 #include "ProcessMeasurement.h"
 

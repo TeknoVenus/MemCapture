@@ -19,8 +19,10 @@
 
 #include <unistd.h>
 #include <getopt.h>
+#include <csignal>
 #include <fstream>
 #include <optional>
+
 
 #include "Platform.h"
 #include "Log.h"
@@ -36,7 +38,7 @@
 #define INCBIN_PREFIX g_
 #include <incbin.h>
 
-#include "reportGenerators/JsonReportGenerator.h"
+#include "JsonReportGenerator.h"
 
 INCBIN(templateHtml, "./templates/template.html");
 
@@ -50,6 +52,10 @@ static bool gJson = false;
 
 bool gEnableGroups = false;
 static std::filesystem::path gGroupsFile;
+
+std::condition_variable gStop;
+std::mutex gLock;
+bool gEarlyTermination = false;
 
 static void displayUsage()
 {
@@ -138,10 +144,26 @@ static void parseArgs(const int argc, char **argv)
     }
 }
 
+void signalHandler(int signal)
+{
+    // On SIGTERM, we should stop capturing and save the report
+    LOG_INFO("Signal %d (%s) received. Stopping and saving report!", signal, strsignal(signal));
+    gEarlyTermination = true;
+    gStop.notify_all();
+    LOG_INFO("Waiting for in-progress data collection to complete");
+}
+
 
 int main(int argc, char *argv[])
 {
     parseArgs(argc, argv);
+
+    // Get start time
+    auto start = std::chrono::steady_clock::now();
+
+    // Configure signals to stop and clean up
+    std::signal(SIGTERM, signalHandler);
+    std::signal(SIGINT, signalHandler);
 
     // Lower our priority to avoid getting in the way
     if (nice(10) < 0) {
@@ -178,7 +200,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    Metadata metadata(gDuration);
+    auto metadata = std::make_shared<Metadata>();
     auto reportGenerator = std::make_shared<JsonReportGenerator>(metadata, groupManager);
 
     // Create all our metrics
@@ -192,10 +214,17 @@ int main(int argc, char *argv[])
     memoryMetric.StartCollection(std::chrono::seconds(3));
     performanceMetric.StartCollection(std::chrono::seconds(3));
 
-    // Block main thread for the collection duration
-    std::this_thread::sleep_for(std::chrono::seconds(gDuration));
+    // Block main thread for the collection duration or until SIGTERM
+    std::unique_lock<std::mutex> locker(gLock);
+    gStop.wait_for(locker, std::chrono::seconds(gDuration));
 
-    LOG_INFO("Stopping after %d seconds", gDuration);
+    if (!gEarlyTermination) {
+        LOG_INFO("Stopping after %d seconds - completed full capture", gDuration);
+    }
+
+    auto end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start).count();
+    metadata->SetDuration(duration);
 
     // Done! Stop data collection
     processMetric.StopCollection();
@@ -209,6 +238,9 @@ int main(int argc, char *argv[])
 
     // Build report
     inja::Environment env;
+    // Make the output a bit tidier
+    env.set_trim_blocks(true);
+    env.set_lstrip_blocks(true);
     auto htmlTemplateString = std::string(g_templateHtml_data, g_templateHtml_data + g_templateHtml_size);
     std::string result = env.render(htmlTemplateString, reportGenerator->getJson());
 

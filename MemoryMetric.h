@@ -29,7 +29,7 @@
 #include "GroupManager.h"
 
 #include "Procrank.h"
-#include "reportGenerators/JsonReportGenerator.h"
+#include "JsonReportGenerator.h"
 
 
 class MemoryMetric : public IMetric

@@ -35,7 +35,7 @@ add_executable(${PROJECT_NAME}
         Process.cpp
         Metadata.cpp
 
-        reportGenerators/JsonReportGenerator.cpp
+        JsonReportGenerator.cpp
 
         ProcessMetric.cpp
         MemoryMetric.cpp

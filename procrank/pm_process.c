@@ -177,7 +177,7 @@ int pm_process_workingset(pm_process_t *proc,
     pm_memusage_t ws, map_ws;
     char filename[MAX_FILENAME];
     int fd;
-    int i, j;
+    int i;
     int error;
 
     if (!proc)
@@ -243,7 +243,7 @@ int pm_process_destroy(pm_process_t *proc) {
 
 static int read_maps(pm_process_t *proc) {
     char filename[MAX_FILENAME];
-    char line[MAX_LINE], name[MAX_LINE], perms[MAX_PERMS];
+    char line[MAX_LINE], name[MAX_LINE + 1], perms[MAX_PERMS];
     FILE *maps_f;
     pm_map_t *map, **maps, **new_maps;
     int maps_count, maps_size;

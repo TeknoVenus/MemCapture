@@ -1,21 +1,32 @@
-//
-// Created by Stephen F on 06/07/23.
-//
+/*
+* If not stated otherwise in this file or this component's LICENSE file the
+* following copyright and licenses apply:
+*
+* Copyright 2023 Stephen Foulds
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+* http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
 
 #include "JsonReportGenerator.h"
 
-JsonReportGenerator::JsonReportGenerator(Metadata metadata, std::optional<std::shared_ptr<GroupManager>> groupManager)
-        : mMetadata(metadata), mGroupManager(std::move(groupManager)), mJson()
-{
-    mJson["metadata"] = {
-            {"image",     mMetadata.Image()},
-            {"platform",  mMetadata.Platform()},
-            {"mac",       mMetadata.Mac()},
-            {"timestamp", mMetadata.ReportTimestamp()},
-            {"duration",  mMetadata.Duration()}
-    };
+#include <utility>
 
+JsonReportGenerator::JsonReportGenerator(std::shared_ptr<Metadata> metadata, std::optional<std::shared_ptr<GroupManager>> groupManager)
+        : mMetadata(std::move(metadata)), mGroupManager(std::move(groupManager)), mJson()
+{
     mJson["processes"] = nlohmann::json::array();
+    mJson["metadata"] = {};
 
     mJson["grandTotal"]["linuxUsage"] = 0.0;
     mJson["grandTotal"]["calculatedUsage"] = 0.0;
@@ -55,8 +66,16 @@ void JsonReportGenerator::addDataset(const std::string &name, const std::vector<
     mJson["data"].emplace_back(dataSet);
 }
 
-nlohmann::json JsonReportGenerator::getJson() const
+nlohmann::json JsonReportGenerator::getJson()
 {
+    mJson["metadata"] = {
+            {"image",     mMetadata->Image()},
+            {"platform",  mMetadata->Platform()},
+            {"mac",       mMetadata->Mac()},
+            {"timestamp", mMetadata->ReportTimestamp()},
+            {"duration",  mMetadata->Duration()}
+    };
+
     return mJson;
 }
 
@@ -136,19 +155,23 @@ void JsonReportGenerator::addProcesses(std::vector<processMeasurement> &processe
 
             mJson["pssByGroup"].emplace_back(tmp);
         }
+    } else {
+        mJson["pssByGroup"] = nullptr;
     }
 
 }
 
 void JsonReportGenerator::setAverageLinuxMemoryUsage(int valueKb)
 {
-    mJson["grandTotal"]["linuxUsage"] = valueKb;
+    // Store in MB
+    mJson["grandTotal"]["linuxUsage"] = valueKb / 1024.0L;
 }
 
 void JsonReportGenerator::addToAccumulatedMemoryUsage(long double valueKb)
 {
-    int usage = mJson["grandTotal"]["calculatedUsage"];
-    usage += (int)std::round(valueKb);
+    // Store in MB
+    long double usage = mJson["grandTotal"]["calculatedUsage"];
+    usage += valueKb / 1024.0L;
 
     mJson["grandTotal"]["calculatedUsage"] = usage;
 }

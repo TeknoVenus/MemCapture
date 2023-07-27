@@ -27,7 +27,7 @@
 #include <mutex>
 #include "Platform.h"
 #include "Procrank.h"
-#include "reportGenerators/JsonReportGenerator.h"
+#include "JsonReportGenerator.h"
 
 
 class PerformanceMetric : public IMetric

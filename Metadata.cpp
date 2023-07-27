@@ -1,6 +1,22 @@
-//
-// Created by Stephen F on 13/07/23.
-//
+/*
+* If not stated otherwise in this file or this component's LICENSE file the
+* following copyright and licenses apply:
+*
+* Copyright 2023 Stephen Foulds
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+* http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
 
 #include "Metadata.h"
 
@@ -9,9 +25,14 @@
 #include <chrono>
 #include <iomanip>
 
-Metadata::Metadata(int duration) : mDuration(duration)
+Metadata::Metadata() : mDuration(0)
 {
 
+}
+
+void Metadata::SetDuration(long seconds)
+{
+    mDuration = seconds;
 }
 
 std::string Metadata::Platform() const
@@ -76,7 +97,7 @@ std::string Metadata::ReportTimestamp() const
     return buffer.str();
 }
 
-int Metadata::Duration() const
+long Metadata::Duration() const
 {
     return mDuration;
 }

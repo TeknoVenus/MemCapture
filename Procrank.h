@@ -21,11 +21,9 @@
 
 #include "Log.h"
 #include "Measurement.h"
-
-extern "C" {
-#include "pagemap/pagemap.h"
-}
-
+#include "processrecord.h"
+#include <procinfo/process.h>
+#include "smapinfo.h"
 #include <utility>
 #include <vector>
 #include <string>
@@ -43,7 +41,6 @@ public:
         }
 
         Process process;
-        pm_memusage_t memoryUsage{};
     };
 
 public:
@@ -54,7 +51,5 @@ public:
     std::vector<ProcessMemoryUsage> GetMemoryUsage() const;
 
 private:
-    pm_kernel_t *mKernel;
-
     std::vector<Measurement> mMeasurements;
 };

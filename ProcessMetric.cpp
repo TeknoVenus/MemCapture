@@ -74,7 +74,7 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
     std::unique_lock<std::mutex> lock(mLock);
 
     do {
-        //LOG_INFO("Collecting process data");
+        LOG_DEBUG("Collecting process data");
         auto start = std::chrono::high_resolution_clock::now();
 
         // Use procrank to get the memory usage for all processes in the system at this moment in time
@@ -90,7 +90,7 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
                 return m.ProcessInfo == procrankMeasurement.process;
             });
 
-            if (itr != mMeasurements.end()) {
+            /*if (itr != mMeasurements.end()) {
                 // Already got a measurement for this PID
                 auto &measurement = *itr;
                 measurement.Pss.AddDataPoint(procrankMeasurement.memoryUsage.pss / (long double) 1024.0);
@@ -109,7 +109,7 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
 
                 processMeasurement measurement(procrankMeasurement.process, pss, rss, uss);
                 mMeasurements.emplace_back(measurement);
-            }
+            }*/
         }
 
         // Update process dead/alive flag

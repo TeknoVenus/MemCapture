@@ -27,6 +27,8 @@ find_package(Threads REQUIRED)
 
 add_subdirectory(procrank)
 
+add_subdirectory(procrank2)
+
 add_executable(${PROJECT_NAME}
         main.cpp
         Measurement.cpp
@@ -57,5 +59,6 @@ target_include_directories(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
         procrank
+        meminfo
         Threads::Threads
         )

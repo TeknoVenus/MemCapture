@@ -24,75 +24,37 @@
 #include <sstream>
 #include <chrono>
 #include <algorithm>
+#include <iostream>
 
 /**
  * C++ wrapper over Procrank (originally from Android): https://github.com/csimmonds/procrank_linux
  */
 Procrank::Procrank()
 {
-    auto error = pm_kernel_create(&mKernel);
-    if (error != 0) {
-        LOG_SYS_WARN(error, "Failed to create kernel interface");
-        mKernel = nullptr;
-    }
+
 }
 
 Procrank::~Procrank()
 {
-    if (mKernel) {
-        pm_kernel_destroy(mKernel);
-    }
+
 }
 
 
 std::vector<Procrank::ProcessMemoryUsage> Procrank::GetMemoryUsage() const
 {
-    if (mKernel == nullptr) {
+    // Get running processes
+    std::set<pid_t> pids;
+    if (!::android::smapinfo::get_all_pids(&pids)) {
+        LOG_ERROR("Failed to get running processes");
         return {};
     }
 
-    pid_t *pids;
-    size_t num_procs;
-    auto error = pm_kernel_pids(mKernel, &pids, &num_procs);
+    uint64_t pgflags = 0;
+    uint64_t pgflags_mask = 0;
 
-    if (error != 0) {
-        LOG_SYS_WARN(error, "Failed to list processes");
-        return {};
-    }
+    ::android::smapinfo::run_procrank(pgflags, pgflags_mask, pids, false,
+                                                     false, android::smapinfo::SortOrder::BY_PSS, false, nullptr,
+                                                     std::cout, std::cerr);
 
-    std::vector<Procrank::ProcessMemoryUsage> processes;
-    std::string cmdline;
-    pm_process_t *proc = {};
-    pid_t pid;
-
-    for (size_t i = 0; i < num_procs; i++) {
-        pid = pids[i];
-
-        Process process(pid);
-        ProcessMemoryUsage memoryUsage(process);
-
-        if (process.name().empty()) {
-            continue;
-        }
-
-        error = pm_process_create(mKernel, pid, &proc);
-        if (error != 0) {
-            LOG_WARN("Could not create process interface for %d", pid);
-            continue;
-        }
-
-        error = pm_process_usage(proc, &memoryUsage.memoryUsage);
-        if (error != 0) {
-            LOG_WARN("Could not get memory usage for PID %d", pid);
-        } else {
-            processes.emplace_back(memoryUsage);
-        }
-
-        pm_process_destroy(proc);
-    }
-
-    free(pids);
-    LOG_INFO("Got memory usage for %zd PIDs", processes.size());
-
-    return processes;
+    return {};
 }

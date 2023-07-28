@@ -18,7 +18,7 @@ Usage: MemCapture <option(s)>
 
     -h, --help          Print this help and exit
     -o, --output-dir    Directory to save results in
-    -r, --report        Type of report to generate. Supported options = ['CSV', 'TABLE']. Defaults to TABLE
+    -j, --json          Save data as JSON in addition to HTML report
     -d, --duration      Amount of time (in seconds) to capture data for. Default 30 seconds
     -p, --platform      Platform we're running on. Supported options = ['AMLOGIC', 'REALTEK', 'BROADCOM']. Defaults to Amlogic
     -g, --groups        Path to JSON file containing the group mappings (optional)
@@ -27,7 +27,7 @@ Usage: MemCapture <option(s)>
 Example:
 
 ```shell
-$ ./MemCapture --platform AMLOGIC --duration 30 --groups ./groups.json --report CSV --output-dir /tmp/memcapture_results/
+$ ./MemCapture --platform AMLOGIC --duration 30 --groups ./groups.json --output-dir /tmp/memcapture_results/
 ```
 
 Averages are calculated over the specified duration.
@@ -60,13 +60,15 @@ An example file (`groups.example.json`) is provided in the repo.
 
 ### Results
 
-By default, results are saved into a single `report.txt` file in `<current-directory>/<timestamp>/report.txt`. To change
-the output directory, provide a valid path to the `-o` argument.
+By default, MemCapture will produce a file called `report.html` in the selected output directory. If no directory is provided, it
+will create a `MemCaptureReport` subdirectory in the current working directory to save the files.
 
-By selecting the CSV option, each report will be saved as its own CSV file which can then be imported into Excel for
-analysis.
+This report can be opened in any web browser and contains a summary view of all the metrics collected.
+
+If the `-j` argument is provided to MemCapture, then an additional `results.json` file will be created. This contains the
+raw data from MemCapture and is designed for importing into a backend system for analysis/reporting.
 
 ### Notes
 
-Tool currently supports three platforms - `AMLOGIC` (default), `REALTEK` and `BROADCOM`. Note Realtek platforms don't
-expose performance metrics in the same way as Amlogic, so some stats are not available
+Tool currently supports three platforms - `AMLOGIC` (default), `REALTEK` and `BROADCOM`. Not all stats are available on
+all platforms

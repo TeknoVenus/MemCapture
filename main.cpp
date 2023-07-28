@@ -206,13 +206,10 @@ int main(int argc, char *argv[])
     // Create all our metrics
     ProcessMetric processMetric(reportGenerator);
     MemoryMetric memoryMetric(gPlatform, reportGenerator);
-    //PerformanceMetric performanceMetric(gPlatform, reportGenerator);
 
     // Start data collection
-    // Capture procrank output less often to reduce CPU load
-    processMetric.StartCollection(std::chrono::seconds(5));
+    processMetric.StartCollection(std::chrono::seconds(3));
     memoryMetric.StartCollection(std::chrono::seconds(3));
-    //performanceMetric.StartCollection(std::chrono::seconds(3));
 
     // Block main thread for the collection duration or until SIGTERM
     std::unique_lock<std::mutex> locker(gLock);
@@ -229,7 +226,6 @@ int main(int argc, char *argv[])
     // Done! Stop data collection
     processMetric.StopCollection();
     memoryMetric.StopCollection();
-    //performanceMetric.StopCollection();
 
     // Save results
     processMetric.SaveResults();

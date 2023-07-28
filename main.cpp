@@ -28,7 +28,6 @@
 #include "Log.h"
 #include "ProcessMetric.h"
 #include "MemoryMetric.h"
-#include "PerformanceMetric.h"
 #include "Metadata.h"
 #include "GroupManager.h"
 

@@ -41,7 +41,6 @@ add_executable(${PROJECT_NAME}
 
         ProcessMetric.cpp
         MemoryMetric.cpp
-        PerformanceMetric.cpp
         )
 
 set_property( SOURCE main.cpp

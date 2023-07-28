@@ -230,7 +230,6 @@ int main(int argc, char *argv[])
     // Save results
     processMetric.SaveResults();
     memoryMetric.SaveResults();
-    //performanceMetric.SaveResults();
 
     // Build report
     inja::Environment env;

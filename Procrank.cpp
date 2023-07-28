@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <iostream>
 #include <inttypes.h>
+#include <set>
 
 Procrank::Procrank() : mSwapEnabled(swapTotalKb() > 0), mZramCompressionRatio(zramCompressionRatio())
 {
@@ -65,10 +66,6 @@ std::vector<Procrank::ProcessMemoryUsage> Procrank::GetMemoryUsage() const
         memoryUsage.emplace_back(usage);
     }
 
-    // For debugging, output "proper" procrank data to compare
-    ::android::smapinfo::run_procrank(0, 0, pids, false, false, ::android::smapinfo::SortOrder::BY_PSS, false, nullptr,
-                                      std::cout, std::cerr);
-
     return memoryUsage;
 }
 
@@ -104,14 +101,14 @@ double Procrank::zramCompressionRatio()
         std::filesystem::path mmstat(buffer);
         mmstat /= "mm_stat";
 
-        unsigned long deviceMemoryTotal = 0;
+        uint64_t deviceMemoryTotal = 0;
 
         if (std::filesystem::exists(mmstat)) {
             std::ifstream mmstatFile(mmstat);
             if (mmstatFile) {
                 std::string line;
                 std::getline(mmstatFile, line);
-                if (sscanf(line.c_str(), "%*" SCNu64 " %*" SCNu64 " %" SCNu64, &deviceMemoryTotal) != 1) {
+                if (sscanf(line.c_str(), "%*u %*u %" SCNu64, &deviceMemoryTotal) != 1) {
                     LOG_ERROR("Malformed mm_stat file %s", mmstat.string().c_str());
                 }
                 zramTotal += deviceMemoryTotal;

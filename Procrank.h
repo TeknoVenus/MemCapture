@@ -21,20 +21,21 @@
 
 #include "Log.h"
 #include "Measurement.h"
-#include "processrecord.h"
-#include <procinfo/process.h>
-#include "smapinfo.h"
 #include <utility>
 #include <vector>
 #include <string>
+#include <set>
 #include "Process.h"
 
 /**
- * Originally memcapture integrated the Android Procrank library. This is now replaced with custom code to read
- * the memory values from the smaps/smaps_rollups file for increased performance.
+ * Originally memcapture integrated the Android Procrank library. This is now replaced with a custom implementation of procrank
+ * to read the memory values from the smaps/smaps_rollups file for increased performance.
  *
- * Android does have a procrank v2 (https://android.googlesource.com/platform/system/memory/libmeminfo/+/refs/heads/main/tools/procrank.cpp)
+ * Android does have a procrank v2 which does make use of smaps (https://android.googlesource.com/platform/system/memory/libmeminfo/+/refs/heads/main/tools/procrank.cpp)
  * but this is buggy and at the time of writing the smaps feature is disabled so doesn't result in any performance improvement
+ *
+ * So this procrank class is inspired by Android's procrank v2 but simplified for our needs. Out-performs procrank v1 by 3-4x in
+ * quick and dirty testing
  */
 class Procrank
 {

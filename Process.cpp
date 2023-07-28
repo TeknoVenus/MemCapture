@@ -342,10 +342,12 @@ std::string Process::getSystemdService()
 */
 std::string Process::GetCgroupPathByCgroupControllerAndPid(const std::string &cgroup_controller, pid_t pid)
 {
-    std::string cgrp_path;
-    std::string cgrp_file_path = "/proc/" + std::to_string(pid) + "/cgroup";
+    char cgroupFilePath[PATH_MAX];
+    snprintf(cgroupFilePath, sizeof(cgroupFilePath), "/proc/%d/cgroup", pid);
 
-    std::ifstream cgrp_strm(cgrp_file_path.c_str());
+    std::string cgrp_path;
+
+    std::ifstream cgrp_strm(cgroupFilePath);
     if (cgrp_strm) {
         std::string cgrp_line;
         int hierarchy_id;
@@ -364,7 +366,7 @@ std::string Process::GetCgroupPathByCgroupControllerAndPid(const std::string &cg
         }
     } else {
         // Expected, process might have died in the meantime
-        LOG_DEBUG("Could not open process cgroup file \"%s\"", cgrp_file_path.c_str());
+        LOG_DEBUG("Could not open process cgroup file '%s'", cgroupFilePath);
     }
 
     return cgrp_path;

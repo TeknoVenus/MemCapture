@@ -22,7 +22,8 @@
 
 #include <utility>
 
-JsonReportGenerator::JsonReportGenerator(std::shared_ptr<Metadata> metadata, std::optional<std::shared_ptr<GroupManager>> groupManager)
+JsonReportGenerator::JsonReportGenerator(std::shared_ptr<Metadata> metadata,
+                                         std::optional<std::shared_ptr<GroupManager>> groupManager)
         : mMetadata(std::move(metadata)), mGroupManager(std::move(groupManager)), mJson()
 {
     mJson["processes"] = nlohmann::json::array();
@@ -73,7 +74,8 @@ nlohmann::json JsonReportGenerator::getJson()
             {"platform",  mMetadata->Platform()},
             {"mac",       mMetadata->Mac()},
             {"timestamp", mMetadata->ReportTimestamp()},
-            {"duration",  mMetadata->Duration()}
+            {"duration",  mMetadata->Duration()},
+            {"swapEnabled",  mMetadata->SwapEnabled()}
     };
 
     return mJson;
@@ -108,21 +110,14 @@ void JsonReportGenerator::addProcesses(std::vector<processMeasurement> &processe
             processJson["group"] = "";
         }
 
-        processJson["rss"]["min"] = process.Rss.GetMinRounded();
-        processJson["rss"]["max"] = process.Rss.GetMaxRounded();
-        processJson["rss"]["average"] = process.Rss.GetAverageRounded();
-
-        processJson["pss"]["min"] = process.Pss.GetMinRounded();
-        processJson["pss"]["max"] = process.Pss.GetMaxRounded();
-        processJson["pss"]["average"] = process.Pss.GetAverageRounded();
-
-        processJson["uss"]["min"] = process.Uss.GetMinRounded();
-        processJson["uss"]["max"] = process.Uss.GetMaxRounded();
-        processJson["uss"]["average"] = process.Uss.GetAverageRounded();
-
-        processJson["swap"]["min"] = process.Swap.GetMinRounded();
-        processJson["swap"]["max"] = process.Swap.GetMaxRounded();
-        processJson["swap"]["average"] = process.Swap.GetAverageRounded();
+        processJson["rss"] = process.Rss.ToJson();
+        processJson["pss"] = process.Pss.ToJson();
+        processJson["uss"] = process.Uss.ToJson();
+        processJson["vss"] = process.Vss.ToJson();
+        processJson["swap"] = process.Swap.ToJson();
+        processJson["swapPss"] = process.SwapPss.ToJson();
+        processJson["swapZram"] = process.SwapZram.ToJson();
+        processJson["locked"] = process.Locked.ToJson();
 
         mJson["processes"].emplace_back(processJson);
     }
@@ -133,7 +128,7 @@ void JsonReportGenerator::addProcesses(std::vector<processMeasurement> &processe
         std::map<std::string, long double> pssPerGroup;
         mJson["pssByGroup"] = nlohmann::json::array();
 
-        for (const auto &process : processes) {
+        for (const auto &process: processes) {
             auto group = process.ProcessInfo.group(mGroupManager.value());
             if (group.has_value()) {
                 pssPerGroup[group.value()] += process.Pss.GetAverage();
@@ -143,19 +138,20 @@ void JsonReportGenerator::addProcesses(std::vector<processMeasurement> &processe
         // Sort the map by PSS desc so the pie chart appears nicely
         std::vector<std::pair<std::string, long double>> pairs;
         pairs.reserve(pssPerGroup.size());
-        for (auto & itr : pssPerGroup) {
+        for (auto &itr: pssPerGroup) {
             pairs.emplace_back(itr);
         }
 
-        std::sort(pairs.begin(), pairs.end(), [](std::pair<std::string, long double>& a, std::pair<std::string, long double>& b)
-        {
-            return a.second > b.second;
-        });
+        std::sort(pairs.begin(), pairs.end(),
+                  [](std::pair<std::string, long double> &a, std::pair<std::string, long double> &b)
+                  {
+                      return a.second > b.second;
+                  });
 
-        for (const auto &group : pairs) {
+        for (const auto &group: pairs) {
             nlohmann::json tmp;
             tmp["groupName"] = group.first;
-            tmp["pss"] = std::round((int)group.second);
+            tmp["pss"] = std::round((int) group.second);
 
             mJson["pssByGroup"].emplace_back(tmp);
         }

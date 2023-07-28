@@ -19,6 +19,7 @@
 #pragma once
 
 #include <string>
+#include "nlohmann/json.hpp"
 
 /**
  * @brief Container for a data measurement, allowing for calculating running the min/max/average values
@@ -44,6 +45,8 @@ public:
     int GetAverageRounded() const;
 
     std::string GetName() const;
+
+    nlohmann::json ToJson() const;
 
 private:
     std::string mName;

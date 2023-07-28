@@ -19,6 +19,7 @@
 
 
 #include "Metadata.h"
+#include "Procrank.h"
 
 #include <fstream>
 #include <sstream>
@@ -100,4 +101,10 @@ std::string Metadata::ReportTimestamp() const
 long Metadata::Duration() const
 {
     return mDuration;
+}
+
+bool Metadata::SwapEnabled() const
+{
+    Procrank procrank;
+    return procrank.swapTotalKb() > 0;
 }

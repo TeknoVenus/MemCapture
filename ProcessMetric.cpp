@@ -85,33 +85,39 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
         auto processMemory = procrank.GetMemoryUsage();
 
         for (const auto &procrankMeasurement: processMemory) {
-            auto itr = std::find_if(mMeasurements.begin(), mMeasurements.end(), [&](const processMeasurement &m)
+
+            // Check if we've seen this process before
+            auto itr = std::find_if(mMeasurements.begin(), mMeasurements.end(), [&](const processMeasurement &p)
             {
-                return m.ProcessInfo == procrankMeasurement.process;
+                return p.ProcessInfo == procrankMeasurement.process;
             });
 
-            if (itr != mMeasurements.end()) {
-                // Already got a measurement for this PID
-                auto &measurement = *itr;
+            if (itr == mMeasurements.end()) {
+                // This is a new process, add to the list
+                processMeasurement measurement(procrankMeasurement.process);
+
                 measurement.Pss.AddDataPoint(procrankMeasurement.pss);
                 measurement.Rss.AddDataPoint(procrankMeasurement.rss);
                 measurement.Uss.AddDataPoint(procrankMeasurement.uss);
-            } else {
-                // Store in KB
-                auto pss = Measurement("PSS");
-                pss.AddDataPoint(procrankMeasurement.pss);
-
-                auto rss = Measurement("RSS");
-                rss.AddDataPoint(procrankMeasurement.rss);
-
-                auto uss = Measurement("USS");
-                uss.AddDataPoint(procrankMeasurement.uss);
-
-                auto swap = Measurement("Swap");
-                swap.AddDataPoint(procrankMeasurement.swap);
-
-                processMeasurement measurement(procrankMeasurement.process, pss, rss, uss, swap);
+                measurement.Vss.AddDataPoint(procrankMeasurement.vss);
+                measurement.Swap.AddDataPoint(procrankMeasurement.swap);
+                measurement.SwapPss.AddDataPoint(procrankMeasurement.swap_pss);
+                measurement.SwapZram.AddDataPoint(procrankMeasurement.swap_zram);
+                measurement.Locked.AddDataPoint(procrankMeasurement.locked);
                 mMeasurements.emplace_back(measurement);
+
+            } else {
+                // Seen this before, add a new datapoint to the existing measurement
+                auto &measurement = *itr;
+
+                measurement.Pss.AddDataPoint(procrankMeasurement.pss);
+                measurement.Rss.AddDataPoint(procrankMeasurement.rss);
+                measurement.Uss.AddDataPoint(procrankMeasurement.uss);
+                measurement.Vss.AddDataPoint(procrankMeasurement.vss);
+                measurement.Swap.AddDataPoint(procrankMeasurement.swap);
+                measurement.SwapPss.AddDataPoint(procrankMeasurement.swap_pss);
+                measurement.SwapZram.AddDataPoint(procrankMeasurement.swap_zram);
+                measurement.Locked.AddDataPoint(procrankMeasurement.locked);
             }
         }
 

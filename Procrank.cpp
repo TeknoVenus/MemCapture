@@ -29,9 +29,6 @@
 #include <iostream>
 #include <inttypes.h>
 
-/**
- * C++ wrapper over Procrank (originally from Android): https://github.com/csimmonds/procrank_linux
- */
 Procrank::Procrank() : mSwapEnabled(swapTotalKb() > 0), mZramCompressionRatio(zramCompressionRatio())
 {
 
@@ -67,6 +64,10 @@ std::vector<Procrank::ProcessMemoryUsage> Procrank::GetMemoryUsage() const
         auto usage = getProcessMemoryUsage(process);
         memoryUsage.emplace_back(usage);
     }
+
+    // For debugging, output "proper" procrank data to compare
+    ::android::smapinfo::run_procrank(0, 0, pids, false, false, ::android::smapinfo::SortOrder::BY_PSS, false, nullptr,
+                                      std::cout, std::cerr);
 
     return memoryUsage;
 }
@@ -118,11 +119,18 @@ double Procrank::zramCompressionRatio()
         }
     }
 
+    if (zramTotal == 0) {
+        return 0;
+    }
+
     uint64_t zramTotalKb = zramTotal / 1024;
 
     // Now work out the compression ratio
     MemInfo systemMemInfo;
-    return static_cast<double>(zramTotalKb) / systemMemInfo.SwapTotal() - systemMemInfo.SwapFree();
+    double compression = static_cast<double>(zramTotalKb) / systemMemInfo.SwapUsed();
+
+    LOG_DEBUG("Zram compression is %f", compression);
+    return compression;
 }
 
 /**

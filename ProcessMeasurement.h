@@ -25,18 +25,20 @@
 
 struct processMeasurement
 {
-    processMeasurement(Process _process, Measurement _pss, Measurement _rss, Measurement _uss, Measurement _swap)
-            : ProcessInfo(std::move(_process)),
-              Pss(std::move(_pss)),
-              Rss(std::move(_rss)),
-              Uss(std::move(_uss)),
-              Swap(std::move(_swap))
+    processMeasurement(Process _process)
+            : ProcessInfo(std::move(_process))
     {
     }
 
     Process ProcessInfo;
-    Measurement Pss;
-    Measurement Rss;
-    Measurement Uss;
-    Measurement Swap;
+
+    Measurement Pss = Measurement("Pss");
+    Measurement Rss = Measurement("Rss");
+    Measurement Uss = Measurement("Uss");
+    Measurement Vss = Measurement("Vss");
+    Measurement Locked = Measurement("Locked");
+    Measurement Swap = Measurement("Swap");
+    Measurement SwapPss = Measurement("SwapPss");
+    Measurement SwapZram = Measurement("SwapZram");
+
 };

@@ -61,6 +61,7 @@ public:
     bool isDead() const;
 
     void updateAliveStatus();
+
 private:
     pid_t getParentPid() const;
 

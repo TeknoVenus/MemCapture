@@ -67,6 +67,10 @@ public:
         return mSwapFree;
     }
 
+    long SwapUsed() const {
+        return mSwapTotal - mSwapFree;
+    }
+
     long CmaTotal() const
     {
         return mCmaTotal;

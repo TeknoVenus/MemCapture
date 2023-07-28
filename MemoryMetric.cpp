@@ -74,6 +74,7 @@ MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<JsonReportGenerato
     }
 
     // Create static measurements for linux memory usage - store in KB
+    // TODO:: This is gross, make tider
     Measurement total("Total");
     mLinuxMemoryMeasurements.insert(std::make_pair(total.GetName(), total));
 
@@ -101,6 +102,10 @@ MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<JsonReportGenerato
     Measurement slabUnreclaimable("SlabUnreclaimable");
     mLinuxMemoryMeasurements.insert(
             std::make_pair(slabUnreclaimable.GetName(), slabUnreclaimable));
+
+    Measurement swapUsed("SwapUsed");
+    mLinuxMemoryMeasurements.insert(
+            std::make_pair(swapUsed.GetName(), swapUsed));
 
     switch (platform) {
         case Platform::AMLOGIC: {
@@ -370,6 +375,7 @@ void MemoryMetric::GetLinuxMemoryUsage()
     mLinuxMemoryMeasurements.at("SlabTotal").AddDataPoint(memInfoFile.SlabKb());
     mLinuxMemoryMeasurements.at("SlabReclaimable").AddDataPoint(memInfoFile.SlabReclaimable());
     mLinuxMemoryMeasurements.at("SlabUnreclaimable").AddDataPoint(memInfoFile.SlabUnreclaimable());
+    mLinuxMemoryMeasurements.at("SwapUsed").AddDataPoint(memInfoFile.SwapUsed());
 }
 
 void MemoryMetric::GetCmaMemoryUsage()

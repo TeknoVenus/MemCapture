@@ -363,13 +363,9 @@ std::string Process::GetCgroupPathByCgroupControllerAndPid(const std::string &cg
             }
         }
     } else {
-        // Exepcted, process might have died in the meantime
+        // Expected, process might have died in the meantime
         LOG_DEBUG("Could not open process cgroup file \"%s\"", cgrp_file_path.c_str());
     }
 
     return cgrp_path;
 }
-
-
-
-

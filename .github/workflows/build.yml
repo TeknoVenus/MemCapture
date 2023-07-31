@@ -11,8 +11,8 @@ jobs:
 
       - name: Dependencies
         run: |
-          apt update -y -q
-          apt install -q -y cmake build-essential
+          sudo apt update -y -q
+          sudo apt install -q -y cmake build-essential
 
       - name: build
         run: |

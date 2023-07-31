@@ -18,6 +18,7 @@
 */
 
 #include "MemoryMetric.h"
+#include "FileParsers/MemInfo.h"
 #include <thread>
 #include <fstream>
 #include <filesystem>
@@ -73,6 +74,7 @@ MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<JsonReportGenerato
     }
 
     // Create static measurements for linux memory usage - store in KB
+    // TODO:: This is gross, make tider
     Measurement total("Total");
     mLinuxMemoryMeasurements.insert(std::make_pair(total.GetName(), total));
 
@@ -91,15 +93,19 @@ MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<JsonReportGenerato
     Measurement available("Available");
     mLinuxMemoryMeasurements.insert(std::make_pair(available.GetName(), available));
 
-    Measurement slabTotal("SlabTotal");
+    Measurement slabTotal("Slab Total");
     mLinuxMemoryMeasurements.insert(std::make_pair(slabTotal.GetName(), slabTotal));
 
-    Measurement slabReclaimable("SlabReclaimable");
+    Measurement slabReclaimable("Slab Reclaimable");
     mLinuxMemoryMeasurements.insert(std::make_pair(slabReclaimable.GetName(), slabReclaimable));
 
-    Measurement slabUnreclaimable("SlabUnreclaimable");
+    Measurement slabUnreclaimable("Slab Unreclaimable");
     mLinuxMemoryMeasurements.insert(
             std::make_pair(slabUnreclaimable.GetName(), slabUnreclaimable));
+
+    Measurement swapUsed("Swap Used");
+    mLinuxMemoryMeasurements.insert(
+            std::make_pair(swapUsed.GetName(), swapUsed));
 
     switch (platform) {
         case Platform::AMLOGIC: {
@@ -180,8 +186,8 @@ void MemoryMetric::CollectData(std::chrono::seconds frequency)
         }
 
         auto end = std::chrono::high_resolution_clock::now();
-        LOG_INFO("MemoryMetric completed in %lld us",
-                 (long long) std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+        LOG_INFO("MemoryMetric completed in %lld ms",
+                 (long long) std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 
         // Wait for period before doing collection again, or until cancelled
         mCv.wait_for(lock, frequency);
@@ -359,63 +365,17 @@ void MemoryMetric::GetLinuxMemoryUsage()
 {
     //LOG_INFO("Getting memory usage");
 
-    // Read memory data from /proc/meminfo and process
-    std::ifstream meminfo("/proc/meminfo");
-
-    if (!meminfo) {
-        LOG_WARN("Failed to open /proc/meminfo");
-        return;
-    }
-
-    long memTotal = 0;
-    long memUsed = 0;
-    long memBuffered = 0;
-    long memCached = 0;
-    long memFree = 0;
-    long memAvailable = 0;
-    long memSlabTotal = 0;
-    long memSlabReclaimable = 0;
-    long memSlabUnreclaimable = 0;
-
-    std::string line;
-    long value;
-
-    while (std::getline(meminfo, line)) {
-        if (sscanf(line.c_str(), "MemTotal: %ld kB", &value) != 0) {
-            memTotal = value;
-        } else if (sscanf(line.c_str(), "MemFree: %ld kB", &value) != 0) {
-            memFree = value;
-        } else if (sscanf(line.c_str(), "MemAvailable: %ld kB", &value) != 0) {
-            memAvailable = value;
-        } else if (sscanf(line.c_str(), "Buffers: %ld kB", &value) != 0) {
-            memBuffered = value;
-        } else if (sscanf(line.c_str(), "Cached: %ld kB", &value) != 0) {
-            memCached = value;
-        } else if (sscanf(line.c_str(), "Slab: %ld kB", &value) != 0) {
-            memSlabTotal = value;
-        } else if (sscanf(line.c_str(), "SReclaimable: %ld kB", &value) != 0) {
-            memSlabReclaimable = value;
-        } else if (sscanf(line.c_str(), "SUnreclaim: %ld kB", &value) != 0) {
-            memSlabUnreclaimable = value;
-        }
-    }
-
-    if (memTotal < (memFree + memBuffered + memCached + memSlabTotal)) {
-        LOG_WARN("MemTotal too small, something went wrong calculating memory");
-        return;
-    }
-
-    memUsed = memTotal - (memFree + memBuffered + memCached + memSlabReclaimable);
-
-    mLinuxMemoryMeasurements.at("Total").AddDataPoint(memTotal);
-    mLinuxMemoryMeasurements.at("Used").AddDataPoint(memUsed);
-    mLinuxMemoryMeasurements.at("Buffered").AddDataPoint(memBuffered);
-    mLinuxMemoryMeasurements.at("Cached").AddDataPoint(memCached);
-    mLinuxMemoryMeasurements.at("Free").AddDataPoint(memFree);
-    mLinuxMemoryMeasurements.at("Available").AddDataPoint(memAvailable);
-    mLinuxMemoryMeasurements.at("SlabTotal").AddDataPoint(memSlabTotal);
-    mLinuxMemoryMeasurements.at("SlabReclaimable").AddDataPoint(memSlabReclaimable);
-    mLinuxMemoryMeasurements.at("SlabUnreclaimable").AddDataPoint(memSlabUnreclaimable);
+    MemInfo memInfoFile;
+    mLinuxMemoryMeasurements.at("Total").AddDataPoint(memInfoFile.MemTotalKb());
+    mLinuxMemoryMeasurements.at("Used").AddDataPoint(memInfoFile.MemUsedKb());
+    mLinuxMemoryMeasurements.at("Buffered").AddDataPoint(memInfoFile.BuffersKb());
+    mLinuxMemoryMeasurements.at("Cached").AddDataPoint(memInfoFile.CachedKb());
+    mLinuxMemoryMeasurements.at("Free").AddDataPoint(memInfoFile.MemFreeKb());
+    mLinuxMemoryMeasurements.at("Available").AddDataPoint(memInfoFile.MemAvailableKb());
+    mLinuxMemoryMeasurements.at("Slab Total").AddDataPoint(memInfoFile.SlabKb());
+    mLinuxMemoryMeasurements.at("Slab Reclaimable").AddDataPoint(memInfoFile.SlabReclaimable());
+    mLinuxMemoryMeasurements.at("Slab Unreclaimable").AddDataPoint(memInfoFile.SlabUnreclaimable());
+    mLinuxMemoryMeasurements.at("Swap Used").AddDataPoint(memInfoFile.SwapUsed());
 }
 
 void MemoryMetric::GetCmaMemoryUsage()
@@ -486,23 +446,11 @@ void MemoryMetric::GetCmaMemoryUsage()
 
         // Work out how much CMA is borrowed by the kernel (this can occur under memory pressure scenarios where
         // there is not enough memory elsewhere for userspace processes)
-        std::ifstream meminfo("/proc/meminfo");
-
-        if (!meminfo) {
-            LOG_WARN("Failed to open /proc/meminfo");
-            return;
-        }
+        MemInfo memInfoFile;
+        mCmaFree.AddDataPoint(memInfoFile.CmaFree());
 
         long double totalUnused = cmaTotalKb - cmaTotalUsed;
-        int cmaFree = 0;
-        std::string line;
-        while (std::getline(meminfo, line)) {
-            if (sscanf(line.c_str(), "CmaFree: %d kB", &cmaFree) != 0) {
-                mCmaFree.AddDataPoint(cmaFree);
-            }
-        }
-
-        long double borrowed = totalUnused - cmaFree;
+        long double borrowed = totalUnused - memInfoFile.CmaFree();
         mCmaBorrowed.AddDataPoint(borrowed);
     } catch (std::filesystem::filesystem_error &error) {
         LOG_WARN("Failed to open CMA debug file with error %s", error.what());

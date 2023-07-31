@@ -24,6 +24,7 @@
 #include "GroupManager.h"
 #include <memory>
 #include <optional>
+#include "Measurement.h"
 
 /**
  * Represent a running process on the system

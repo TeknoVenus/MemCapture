@@ -18,81 +18,162 @@
 */
 
 #include "Procrank.h"
+#include "FileParsers/MemInfo.h"
+#include "FileParsers/Smaps.h"
 
 #include <climits>
 #include <fstream>
 #include <sstream>
 #include <chrono>
 #include <algorithm>
+#include <iostream>
+#include <inttypes.h>
+#include <set>
 
-/**
- * C++ wrapper over Procrank (originally from Android): https://github.com/csimmonds/procrank_linux
- */
-Procrank::Procrank()
+Procrank::Procrank() : mSwapEnabled(swapTotalKb() > 0), mZramCompressionRatio(zramCompressionRatio())
 {
-    auto error = pm_kernel_create(&mKernel);
-    if (error != 0) {
-        LOG_SYS_WARN(error, "Failed to create kernel interface");
-        mKernel = nullptr;
-    }
+
 }
 
 Procrank::~Procrank()
 {
-    if (mKernel) {
-        pm_kernel_destroy(mKernel);
-    }
+
 }
 
-
+/**
+ * Get the memory usage for all the processes currently running
+ * @return
+ */
 std::vector<Procrank::ProcessMemoryUsage> Procrank::GetMemoryUsage() const
 {
-    if (mKernel == nullptr) {
+    // Get running processes
+    std::set<pid_t> pids = getRunningProcesses();
+
+    if (pids.empty()) {
+        LOG_WARN("No PIDs found");
         return {};
     }
 
-    pid_t *pids;
-    size_t num_procs;
-    auto error = pm_kernel_pids(mKernel, &pids, &num_procs);
-
-    if (error != 0) {
-        LOG_SYS_WARN(error, "Failed to list processes");
-        return {};
-    }
-
-    std::vector<Procrank::ProcessMemoryUsage> processes;
-    std::string cmdline;
-    pm_process_t *proc = {};
-    pid_t pid;
-
-    for (size_t i = 0; i < num_procs; i++) {
-        pid = pids[i];
-
+    // Get the memory usage for each PID
+    std::vector<Procrank::ProcessMemoryUsage> memoryUsage;
+    for (auto &&pid: pids) {
         Process process(pid);
-        ProcessMemoryUsage memoryUsage(process);
-
         if (process.name().empty()) {
             continue;
         }
 
-        error = pm_process_create(mKernel, pid, &proc);
-        if (error != 0) {
-            LOG_WARN("Could not create process interface for %d", pid);
-            continue;
-        }
-
-        error = pm_process_usage(proc, &memoryUsage.memoryUsage);
-        if (error != 0) {
-            LOG_WARN("Could not get memory usage for PID %d", pid);
-        } else {
-            processes.emplace_back(memoryUsage);
-        }
-
-        pm_process_destroy(proc);
+        auto usage = getProcessMemoryUsage(process);
+        memoryUsage.emplace_back(usage);
     }
 
-    free(pids);
-    LOG_INFO("Got memory usage for %zd PIDs", processes.size());
+    return memoryUsage;
+}
 
-    return processes;
+long Procrank::swapTotalKb()
+{
+    MemInfo memInfo;
+    return memInfo.SwapTotal();
+}
+
+/**
+ * Work out the current zram compression ratio
+ * @return
+ */
+double Procrank::zramCompressionRatio()
+{
+    if (!mSwapEnabled) {
+        return 0;
+    }
+
+    // First, work out how much ZRAM memory we have
+    char buffer[PATH_MAX];
+    uint64_t zramTotal = 0;
+
+    constexpr uint32_t maxZramDevices = 256;
+    for (uint32_t i = 0; i < maxZramDevices; i++) {
+        snprintf(buffer, PATH_MAX, "/sys/block/zram%u", i);
+        if (!std::filesystem::exists(buffer)) {
+            // We assume zram devices appear in range 0-255 and appear always in sequence
+            // under /sys/block. So, stop looking for them once we find one is missing.
+            break;
+        }
+
+        std::filesystem::path mmstat(buffer);
+        mmstat /= "mm_stat";
+
+        uint64_t deviceMemoryTotal = 0;
+
+        if (std::filesystem::exists(mmstat)) {
+            std::ifstream mmstatFile(mmstat);
+            if (mmstatFile) {
+                std::string line;
+                std::getline(mmstatFile, line);
+                if (sscanf(line.c_str(), "%*u %*u %" SCNu64, &deviceMemoryTotal) != 1) {
+                    LOG_ERROR("Malformed mm_stat file %s", mmstat.string().c_str());
+                }
+                zramTotal += deviceMemoryTotal;
+            }
+        }
+    }
+
+    if (zramTotal == 0) {
+        return 0;
+    }
+
+    uint64_t zramTotalKb = zramTotal / 1024;
+
+    // Now work out the compression ratio
+    MemInfo systemMemInfo;
+    double compression = static_cast<double>(zramTotalKb) / systemMemInfo.SwapUsed();
+
+    LOG_DEBUG("Zram compression is %f", compression);
+    return compression;
+}
+
+/**
+ * Return the pids of all the currently running processes
+ * @return
+ */
+std::set<pid_t> Procrank::getRunningProcesses() const
+{
+    std::set<pid_t> pids;
+    std::filesystem::directory_iterator procDir("/proc");
+
+    std::string directoryName;
+    pid_t pid;
+    for (const auto &entry: procDir) {
+        if (entry.is_directory()) {
+            // Get the PID from dir name
+            directoryName = entry.path().filename().string();
+
+            if (parseInt(directoryName, &pid)) {
+                pids.insert(static_cast<pid_t>(pid));
+            }
+        }
+    }
+
+    return pids;
+}
+
+
+/**
+ * Get the memory usage of a given process
+ * @param process
+ * @return
+ */
+Procrank::ProcessMemoryUsage Procrank::getProcessMemoryUsage(Process &process) const
+{
+    ProcessMemoryUsage memoryUsage(process);
+
+    Smaps smapFile(memoryUsage.process.pid());
+    memoryUsage.pss = smapFile.Pss();
+    memoryUsage.rss = smapFile.Rss();
+    memoryUsage.swap = smapFile.Swap();
+    memoryUsage.swap_pss = smapFile.SwapPss();
+    memoryUsage.locked = smapFile.Locked();
+    memoryUsage.vss = smapFile.Vss();
+    memoryUsage.uss = smapFile.Uss();
+    memoryUsage.swap_zram = smapFile.SwapPss() * mZramCompressionRatio;
+
+    return memoryUsage;
 }

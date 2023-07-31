@@ -19,6 +19,7 @@
 
 
 #include "Metadata.h"
+#include "Procrank.h"
 
 #include <fstream>
 #include <sstream>
@@ -43,11 +44,17 @@ std::string Metadata::Platform() const
     }
 
     std::string line;
-    char platform[512];
-
     while (std::getline(deviceProperties, line)) {
-        if (sscanf(line.c_str(), "FRIENDLY_ID=\"%s\"", platform) != 0) {
-            return std::string(platform);
+        // Split on = sign
+        auto delim = line.find('=');
+        if (delim != std::string::npos) {
+            std::string field = line.substr(0, delim);
+
+            if (field == "FRIENDLY_ID") {
+                std::string value = line.substr(delim + 1);
+                value.erase(std::remove(value.begin(), value.end(), '"'), value.end());
+                return value;
+            }
         }
     }
 
@@ -100,4 +107,10 @@ std::string Metadata::ReportTimestamp() const
 long Metadata::Duration() const
 {
     return mDuration;
+}
+
+bool Metadata::SwapEnabled() const
+{
+    Procrank procrank;
+    return procrank.swapTotalKb() > 0;
 }

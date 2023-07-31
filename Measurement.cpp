@@ -61,7 +61,7 @@ long double Measurement::GetMin() const
 
 int Measurement::GetMinRounded() const
 {
-    return (int)std::round(mMin);
+    return (int) std::round(mMin);
 }
 
 long double Measurement::GetMax() const
@@ -71,7 +71,7 @@ long double Measurement::GetMax() const
 
 int Measurement::GetMaxRounded() const
 {
-    return (int)std::round(mMax);
+    return (int) std::round(mMax);
 }
 
 long double Measurement::GetAverage() const
@@ -81,10 +81,19 @@ long double Measurement::GetAverage() const
 
 int Measurement::GetAverageRounded() const
 {
-    return (int)std::round(mAverage);
+    return (int) std::round(mAverage);
 }
 
 std::string Measurement::GetName() const
 {
     return mName;
+}
+
+nlohmann::json Measurement::ToJson() const
+{
+    return {
+            {"min",     GetMinRounded()},
+            {"max",     GetMaxRounded()},
+            {"average", GetAverageRounded()}
+    };
 }

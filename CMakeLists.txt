@@ -25,7 +25,6 @@ add_compile_options(-Wall -Wextra)
 
 find_package(Threads REQUIRED)
 
-add_subdirectory(procrank)
 
 add_executable(${PROJECT_NAME}
         main.cpp
@@ -35,11 +34,13 @@ add_executable(${PROJECT_NAME}
         Process.cpp
         Metadata.cpp
 
+        FileParsers/MemInfo.cpp
+        FileParsers/Smaps.cpp
+
         JsonReportGenerator.cpp
 
         ProcessMetric.cpp
         MemoryMetric.cpp
-        PerformanceMetric.cpp
         )
 
 set_property( SOURCE main.cpp
@@ -56,6 +57,5 @@ target_include_directories(${PROJECT_NAME}
         )
 
 target_link_libraries(${PROJECT_NAME}
-        procrank
         Threads::Threads
         )

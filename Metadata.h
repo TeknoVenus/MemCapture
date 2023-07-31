@@ -38,6 +38,7 @@ public:
     std::string Image() const;
     std::string Mac() const;
     std::string ReportTimestamp() const;
+    bool SwapEnabled() const;
     long Duration() const;
 
 private:

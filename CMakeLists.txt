@@ -19,12 +19,15 @@ cmake_minimum_required(VERSION 3.10)
 
 project(MemCapture)
 
+# Add our local cmake directory to search for components
+set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake" )
+
 # The following disables an annoying warning "<blah> will change in GCC X.XX"
 add_compile_options(-Wno-psabi)
 add_compile_options(-Wall -Wextra)
 
 find_package(Threads REQUIRED)
-
+find_package(Breakpad QUIET )
 
 add_executable(${PROJECT_NAME}
         main.cpp
@@ -59,3 +62,14 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
         Threads::Threads
         )
+
+if(BREAKPAD_FOUND)
+        message(STATUS "Enabling breakpad support")
+        add_definitions( -DUSE_BREAKPAD )
+
+        target_link_libraries(${PROJECT_NAME}
+                Breakpad::BreakpadWrapper
+        )
+else()
+        message(STATUS "Breakpad not found")
+endif()

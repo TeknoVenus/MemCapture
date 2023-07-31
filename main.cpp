@@ -33,6 +33,10 @@
 
 #include "inja/inja.hpp"
 
+#ifdef USE_BREAKPAD
+#include "breakpad_wrapper.h"
+#endif
+
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
 #define INCBIN_PREFIX g_
 #include <incbin.h>
@@ -161,6 +165,12 @@ int main(int argc, char *argv[])
     auto start = std::chrono::steady_clock::now();
 
     // Configure signals to stop and clean up
+#ifdef USE_BREAKPAD
+    // Breakpad will handle SIGILL, SIGABRT, SIGFPE and SIGSEGV
+    LOG_INFO("Breakpad support enabled");
+    breakpad_ExceptionHandler();
+#endif
+
     std::signal(SIGTERM, signalHandler);
     std::signal(SIGINT, signalHandler);
 

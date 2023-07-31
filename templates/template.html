@@ -130,15 +130,17 @@
                     <th style="max-width: 5rem;">USS Min (KB)</th>
                     <th style="max-width: 5rem;">USS Max (KB)</th>
                     <th style="max-width: 5rem;">USS Avg (KB)</th>
-                    <th style="max-width: 5rem;">Swap Min (KB)</th>
-                    <th style="max-width: 5rem;">Swap Max (KB)</th>
-                    <th style="max-width: 5rem;">Swap Avg (KB)</th>
-                    <th style="max-width: 5rem;">Swap PSS Min (KB)</th>
-                    <th style="max-width: 5rem;">Swap PSS Max (KB)</th>
-                    <th style="max-width: 5rem;">Swap PSS Avg (KB)</th>
-                    <th style="max-width: 5rem;">ZRAM Swap Min (KB)</th>
-                    <th style="max-width: 5rem;">ZRAM Swap Max (KB)</th>
-                    <th style="max-width: 5rem;">ZRAM Swap Avg (KB)</th>
+                    {% if metadata.swapEnabled %}
+                        <th style="max-width: 5rem;">Swap Min (KB)</th>
+                        <th style="max-width: 5rem;">Swap Max (KB)</th>
+                        <th style="max-width: 5rem;">Swap Avg (KB)</th>
+                        <th style="max-width: 5rem;">Swap PSS Min (KB)</th>
+                        <th style="max-width: 5rem;">Swap PSS Max (KB)</th>
+                        <th style="max-width: 5rem;">Swap PSS Avg (KB)</th>
+                        <th style="max-width: 5rem;">ZRAM Swap Min (KB)</th>
+                        <th style="max-width: 5rem;">ZRAM Swap Max (KB)</th>
+                        <th style="max-width: 5rem;">ZRAM Swap Avg (KB)</th>
+                    {% endif %}
                 </tr>
                 </thead>
                 <tbody>
@@ -160,15 +162,17 @@
                     <td>{{ p.uss.min }}</td>
                     <td>{{ p.uss.max }}</td>
                     <td>{{ p.uss.average }}</td>
-                    <td>{{ p.swap.min }}</td>
-                    <td>{{ p.swap.max }}</td>
-                    <td>{{ p.swap.average }}</td>
-                    <td>{{ p.swapPss.min }}</td>
-                    <td>{{ p.swapPss.max }}</td>
-                    <td>{{ p.swapPss.average }}</td>
-                    <td>{{ p.swapZram.min }}</td>
-                    <td>{{ p.swapZram.max }}</td>
-                    <td>{{ p.swapZram.average }}</td>
+                    {% if metadata.swapEnabled %}
+                        <td>{{ p.swap.min }}</td>
+                        <td>{{ p.swap.max }}</td>
+                        <td>{{ p.swap.average }}</td>
+                        <td>{{ p.swapPss.min }}</td>
+                        <td>{{ p.swapPss.max }}</td>
+                        <td>{{ p.swapPss.average }}</td>
+                        <td>{{ p.swapZram.min }}</td>
+                        <td>{{ p.swapZram.max }}</td>
+                        <td>{{ p.swapZram.average }}</td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
                 </tbody>
@@ -260,6 +264,7 @@
 </div>
 
 <script>
+    // @formatter:off
     let processTable = $('#processes').DataTable({
         order: [[12, 'desc']],
         buttons: [
@@ -296,11 +301,19 @@
         },
         columnDefs: [
             {
-                targets: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
-                render: $.fn.dataTable.render.number(',', '.', 0, '')
+                {% if metadata.swapEnabled %}
+                    targets: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+                {% else %}
+                    targets: [7, 8, 9, 10, 11, 12, 13, 14, 15],
+                {% endif %}
+                    render: $.fn.dataTable.render.number(',', '.', 0, '')
             },
             {
-                targets: [1, 6, 7, 8, 10, 11, 13, 14, 16, 17, 19, 20, 22, 23],
+                {% if metadata.swapEnabled %}
+                    targets: [1, 6, 7, 8, 10, 11, 13, 14, 16, 17, 19, 20, 22, 23],
+                {% else %}
+                    targets: [1, 6, 7, 8, 10, 11, 13, 14],
+                {% endif %}
                 visible: false
             }
         ],
@@ -313,7 +326,7 @@
     const pssChartCtx = document.getElementById('pssChart');
     const pssGroupChartCtx = document.getElementById('pssGroupChart');
 
-    // @formatter:off
+
     new Chart(pssChartCtx, {
         type: 'bar',
         data: {

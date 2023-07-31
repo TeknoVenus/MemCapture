@@ -93,17 +93,17 @@ MemoryMetric::MemoryMetric(Platform platform, std::shared_ptr<JsonReportGenerato
     Measurement available("Available");
     mLinuxMemoryMeasurements.insert(std::make_pair(available.GetName(), available));
 
-    Measurement slabTotal("SlabTotal");
+    Measurement slabTotal("Slab Total");
     mLinuxMemoryMeasurements.insert(std::make_pair(slabTotal.GetName(), slabTotal));
 
-    Measurement slabReclaimable("SlabReclaimable");
+    Measurement slabReclaimable("Slab Reclaimable");
     mLinuxMemoryMeasurements.insert(std::make_pair(slabReclaimable.GetName(), slabReclaimable));
 
-    Measurement slabUnreclaimable("SlabUnreclaimable");
+    Measurement slabUnreclaimable("Slab Unreclaimable");
     mLinuxMemoryMeasurements.insert(
             std::make_pair(slabUnreclaimable.GetName(), slabUnreclaimable));
 
-    Measurement swapUsed("SwapUsed");
+    Measurement swapUsed("Swap Used");
     mLinuxMemoryMeasurements.insert(
             std::make_pair(swapUsed.GetName(), swapUsed));
 
@@ -186,8 +186,8 @@ void MemoryMetric::CollectData(std::chrono::seconds frequency)
         }
 
         auto end = std::chrono::high_resolution_clock::now();
-        LOG_INFO("MemoryMetric completed in %lld us",
-                 (long long) std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+        LOG_INFO("MemoryMetric completed in %lld ms",
+                 (long long) std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 
         // Wait for period before doing collection again, or until cancelled
         mCv.wait_for(lock, frequency);
@@ -372,10 +372,10 @@ void MemoryMetric::GetLinuxMemoryUsage()
     mLinuxMemoryMeasurements.at("Cached").AddDataPoint(memInfoFile.CachedKb());
     mLinuxMemoryMeasurements.at("Free").AddDataPoint(memInfoFile.MemFreeKb());
     mLinuxMemoryMeasurements.at("Available").AddDataPoint(memInfoFile.MemAvailableKb());
-    mLinuxMemoryMeasurements.at("SlabTotal").AddDataPoint(memInfoFile.SlabKb());
-    mLinuxMemoryMeasurements.at("SlabReclaimable").AddDataPoint(memInfoFile.SlabReclaimable());
-    mLinuxMemoryMeasurements.at("SlabUnreclaimable").AddDataPoint(memInfoFile.SlabUnreclaimable());
-    mLinuxMemoryMeasurements.at("SwapUsed").AddDataPoint(memInfoFile.SwapUsed());
+    mLinuxMemoryMeasurements.at("Slab Total").AddDataPoint(memInfoFile.SlabKb());
+    mLinuxMemoryMeasurements.at("Slab Reclaimable").AddDataPoint(memInfoFile.SlabReclaimable());
+    mLinuxMemoryMeasurements.at("Slab Unreclaimable").AddDataPoint(memInfoFile.SlabUnreclaimable());
+    mLinuxMemoryMeasurements.at("Swap Used").AddDataPoint(memInfoFile.SwapUsed());
 }
 
 void MemoryMetric::GetCmaMemoryUsage()

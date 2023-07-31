@@ -1,6 +1,21 @@
-//
-// Created by Stephen F on 27/07/23.
-//
+/*
+* If not stated otherwise in this file or this component's LICENSE file the
+* following copyright and licenses apply:
+*
+* Copyright 2023 Stephen Foulds
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+* http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 
 #include "Smaps.h"
 
@@ -39,28 +54,28 @@ void Smaps::parseSmaps()
 
         switch (entry.first) {
             case SmapsField::Pss:
-                mPss = entry.second;
+                mPss += entry.second;
                 break;
             case SmapsField::Rss:
-                mRss = entry.second;
+                mRss += entry.second;
                 break;
             case SmapsField::Swap:
-                mSwap = entry.second;
+                mSwap += entry.second;
                 break;
             case SmapsField::SwapPss:
-                mSwapPss = entry.second;
+                mSwapPss += entry.second;
                 break;
             case SmapsField::Locked:
-                mLocked = entry.second;
+                mLocked += entry.second;
                 break;
             case SmapsField::PrivateClean:
-                mPrivateClean = entry.second;
+                mPrivateClean += entry.second;
                 break;
             case SmapsField::PrivateDirty:
-                mPrivateDirty = entry.second;
+                mPrivateDirty += entry.second;
                 break;
             case SmapsField::Size:
-                mSize = entry.second;
+                mSize += entry.second;
                 break;
             case SmapsField::Ignore:
             default:

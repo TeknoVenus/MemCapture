@@ -74,7 +74,7 @@ void ProcessMetric::CollectData(const std::chrono::seconds frequency)
     std::unique_lock<std::mutex> lock(mLock);
 
     do {
-        LOG_DEBUG("Collecting process data");
+        // LOG_DEBUG("Collecting process data");
         auto start = std::chrono::high_resolution_clock::now();
 
         // Use procrank to get the memory usage for all processes in the system at this moment in time

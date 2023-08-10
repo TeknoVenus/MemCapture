@@ -57,5 +57,4 @@ private:
 
     long double mAverage;
     long double mTotal;
-
 };

@@ -40,9 +40,11 @@ class JsonReportGenerator
 public:
     using row = std::vector<std::variant<std::string, Measurement>>;
 
+    using dataItems = std::vector<std::variant<std::pair<std::string, std::string>, Measurement>>;
+
     JsonReportGenerator(std::shared_ptr<Metadata> metadata, std::optional<std::shared_ptr<GroupManager>> groupManager);
 
-    void addDataset(const std::string &name, const std::vector<std::string> &columns, const std::vector<row> &rows);
+    void addDataset(const std::string& name, const std::vector<dataItems>& data);
 
     void addProcesses(std::vector<processMeasurement> &processes);
 
@@ -50,13 +52,13 @@ public:
 
     void addToAccumulatedMemoryUsage(long double valueKb);
 
-    nlohmann::json getJson();
+    nlohmann::ordered_json getJson();
 
 private:
     const std::shared_ptr<Metadata> mMetadata;
     const std::optional<std::shared_ptr<GroupManager>> mGroupManager;
 
-    nlohmann::json mJson;
+    nlohmann::ordered_json mJson;
 
     std::vector<Process> mProcesses;
 };

@@ -100,14 +100,6 @@ private:
         Measurement Fragmentation;
     };
 
-    struct memoryBandwidth
-    {
-        long maxKBps;
-        double maxUsagePercent;
-
-        long averageKBps;
-        double averageUsagePercent;
-    };
 
     struct gpuMeasurement
     {
@@ -138,8 +130,8 @@ private:
 
     Measurement mCmaFree;
     Measurement mCmaBorrowed;
+    Measurement mMemoryBandwidth;
 
-    memoryBandwidth mMemoryBandwidth;
     bool mMemoryBandwidthSupported;
     bool mGPUMemorySupported;
 

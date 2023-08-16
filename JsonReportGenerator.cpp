@@ -40,7 +40,7 @@ void JsonReportGenerator::addDataset(const std::string &name, const std::vector<
         return;
     }
 
-    nlohmann::ordered_json dataSet;
+    nlohmann::json dataSet;
 
     dataSet["name"] = name;
     dataSet["data"] = nlohmann::json::array();
@@ -53,7 +53,7 @@ void JsonReportGenerator::addDataset(const std::string &name, const std::vector<
     // of the columns. The _columnOrder array will also be responsible for generating the table headings
 
     for (const auto& item : data) {
-        nlohmann::ordered_json tmp;
+        nlohmann::json tmp;
 
         for (const auto& value : item) {
             std::visit(overload{
@@ -87,7 +87,7 @@ void JsonReportGenerator::addDataset(const std::string &name, const std::vector<
 }
 
 
-nlohmann::ordered_json JsonReportGenerator::getJson()
+nlohmann::json JsonReportGenerator::getJson()
 {
     mJson["metadata"] = {
             {"image",     mMetadata->Image()},

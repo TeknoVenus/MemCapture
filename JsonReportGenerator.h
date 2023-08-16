@@ -52,13 +52,13 @@ public:
 
     void addToAccumulatedMemoryUsage(long double valueKb);
 
-    nlohmann::ordered_json getJson();
+    nlohmann::json getJson();
 
 private:
     const std::shared_ptr<Metadata> mMetadata;
     const std::optional<std::shared_ptr<GroupManager>> mGroupManager;
 
-    nlohmann::ordered_json mJson;
+    nlohmann::json mJson;
 
     std::vector<Process> mProcesses;
 };

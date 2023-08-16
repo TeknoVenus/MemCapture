@@ -22,7 +22,7 @@
 #include <csignal>
 #include <fstream>
 #include <optional>
-
+#include <filesystem>
 
 #include "Platform.h"
 #include "Log.h"

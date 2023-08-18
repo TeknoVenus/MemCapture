@@ -90,7 +90,10 @@ std::string Metadata::Mac() const
     std::stringstream buffer;
     buffer << macFile.rdbuf();
 
-    return buffer.str();
+    std::string macStr = buffer.str();
+    // Remove trailing \n
+    macStr.erase(std::remove(macStr.begin(), macStr.end(), '\n'), macStr.cend());
+    return macStr;
 }
 
 std::string Metadata::ReportTimestamp() const

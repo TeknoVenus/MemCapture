@@ -30,6 +30,7 @@
 #include "MemoryMetric.h"
 #include "Metadata.h"
 #include "GroupManager.h"
+#include "ConditionVariable.h"
 
 #include "inja/inja.hpp"
 
@@ -57,7 +58,7 @@ static bool gJson = false;
 bool gEnableGroups = false;
 static std::filesystem::path gGroupsFile;
 
-std::condition_variable gStop;
+ConditionVariable gStop;
 std::mutex gLock;
 bool gEarlyTermination = false;
 

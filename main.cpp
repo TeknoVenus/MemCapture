@@ -284,6 +284,16 @@ int main(int argc, char *argv[])
         return ordered;
     });
 
+    // Write the JSON first - this is safer and is the report automation need, so if we crash
+    // after this point we'll still get some data
+    if (gJson) {
+        std::filesystem::path jsonFilepath = gOutputDirectory / "report.json";
+        std::ofstream outputJson(jsonFilepath, std::ios::trunc | std::ios::binary);
+        outputJson << reportGenerator->getJson().dump(4);
+
+        LOG_INFO("Saved JSON data to %s", jsonFilepath.string().c_str());
+    }
+
     try {
         auto htmlTemplateString = std::string(g_templateHtml_data, g_templateHtml_data + g_templateHtml_size);
         std::string result = env.render(htmlTemplateString, reportGenerator->getJson());
@@ -293,16 +303,9 @@ int main(int argc, char *argv[])
         outputHtml << result;
 
         LOG_INFO("Saved report to %s", htmlFilepath.string().c_str());
-    } catch (std::exception& e) {
+    } catch (const std::exception& e) {
         LOG_ERROR("Failed to save HTML report with exception %s", e.what());
-    }
-
-    if (gJson) {
-        std::filesystem::path jsonFilepath = gOutputDirectory / "report.json";
-        std::ofstream outputJson(jsonFilepath, std::ios::trunc | std::ios::binary);
-        outputJson << reportGenerator->getJson().dump(4);
-
-        LOG_INFO("Saved JSON data to %s", jsonFilepath.string().c_str());
+        throw;
     }
 
     return EXIT_SUCCESS;

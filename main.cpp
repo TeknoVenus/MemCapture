@@ -284,14 +284,18 @@ int main(int argc, char *argv[])
         return ordered;
     });
 
-    auto htmlTemplateString = std::string(g_templateHtml_data, g_templateHtml_data + g_templateHtml_size);
-    std::string result = env.render(htmlTemplateString, reportGenerator->getJson());
+    try {
+        auto htmlTemplateString = std::string(g_templateHtml_data, g_templateHtml_data + g_templateHtml_size);
+        std::string result = env.render(htmlTemplateString, reportGenerator->getJson());
 
-    std::filesystem::path htmlFilepath = gOutputDirectory / "report.html";
-    std::ofstream outputHtml(htmlFilepath, std::ios::trunc | std::ios::binary);
-    outputHtml << result;
+        std::filesystem::path htmlFilepath = gOutputDirectory / "report.html";
+        std::ofstream outputHtml(htmlFilepath, std::ios::trunc | std::ios::binary);
+        outputHtml << result;
 
-    LOG_INFO("Saved report to %s", htmlFilepath.string().c_str());
+        LOG_INFO("Saved report to %s", htmlFilepath.string().c_str());
+    } catch (std::exception& e) {
+        LOG_ERROR("Failed to save HTML report with exception %s", e.what());
+    }
 
     if (gJson) {
         std::filesystem::path jsonFilepath = gOutputDirectory / "report.json";
